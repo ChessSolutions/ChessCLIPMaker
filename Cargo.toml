@@ -23,7 +23,7 @@ arrayvec = { version = "0.7", features = ["serde"] }
 clap = { version = "4", features = ["derive", "deprecated", "env"] }
 gift = "0.12"
 futures = "0.3"
-tikv-jemallocator = { version = "0.6", features = ["unprefixed_malloc_on_supported_platforms"] }
+tikv-jemallocator = { version = "0.7", features = ["unprefixed_malloc_on_supported_platforms"] }
 listenfd = "1"
 
 [profile.release]
