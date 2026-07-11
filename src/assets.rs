@@ -84,6 +84,7 @@ pub enum PieceSet {
     Merida,
     Monarchy,
     Mpchess,
+    Papercut,
     Pirouetti,
     Pixel,
     Reillycraig,
@@ -93,11 +94,12 @@ pub enum PieceSet {
     Spatial,
     Staunty,
     Tatiana,
+    Totoy,
     Xkcd,
 }
 
 pub struct ByPieceSet<T> {
-    inner: [T; 38],
+    inner: [T; 40],
 }
 
 impl<T> ByPieceSet<T> {
@@ -136,6 +138,7 @@ impl<T> ByPieceSet<T> {
                 Merida,
                 Monarchy,
                 Mpchess,
+                Papercut,
                 Pirouetti,
                 Pixel,
                 Reillycraig,
@@ -145,6 +148,7 @@ impl<T> ByPieceSet<T> {
                 Spatial,
                 Staunty,
                 Tatiana,
+                Totoy,
                 Xkcd,
             ]
             .map(f),
@@ -188,6 +192,7 @@ pub fn sprite_data(board: BoardTheme, pieces: PieceSet) -> &'static [u8] {
             Merida => include_bytes!("../theme/sprites/blue-merida.gif"),
             Monarchy => include_bytes!("../theme/sprites/blue-monarchy.gif"),
             Mpchess => include_bytes!("../theme/sprites/blue-mpchess.gif"),
+            Papercut => include_bytes!("../theme/sprites/blue-papercut.gif"),
             Pirouetti => include_bytes!("../theme/sprites/blue-pirouetti.gif"),
             Pixel => include_bytes!("../theme/sprites/blue-pixel.gif"),
             Reillycraig => include_bytes!("../theme/sprites/blue-reillycraig.gif"),
@@ -197,6 +202,7 @@ pub fn sprite_data(board: BoardTheme, pieces: PieceSet) -> &'static [u8] {
             Spatial => include_bytes!("../theme/sprites/blue-spatial.gif"),
             Staunty => include_bytes!("../theme/sprites/blue-staunty.gif"),
             Tatiana => include_bytes!("../theme/sprites/blue-tatiana.gif"),
+            Totoy => include_bytes!("../theme/sprites/blue-totoy.gif"),
             Xkcd => include_bytes!("../theme/sprites/blue-xkcd.gif"),
         },
 
@@ -229,6 +235,7 @@ pub fn sprite_data(board: BoardTheme, pieces: PieceSet) -> &'static [u8] {
             Merida => include_bytes!("../theme/sprites/brown-merida.gif"),
             Monarchy => include_bytes!("../theme/sprites/brown-monarchy.gif"),
             Mpchess => include_bytes!("../theme/sprites/brown-mpchess.gif"),
+            Papercut => include_bytes!("../theme/sprites/brown-papercut.gif"),
             Pirouetti => include_bytes!("../theme/sprites/brown-pirouetti.gif"),
             Pixel => include_bytes!("../theme/sprites/brown-pixel.gif"),
             Reillycraig => include_bytes!("../theme/sprites/brown-reillycraig.gif"),
@@ -238,6 +245,7 @@ pub fn sprite_data(board: BoardTheme, pieces: PieceSet) -> &'static [u8] {
             Spatial => include_bytes!("../theme/sprites/brown-spatial.gif"),
             Staunty => include_bytes!("../theme/sprites/brown-staunty.gif"),
             Tatiana => include_bytes!("../theme/sprites/brown-tatiana.gif"),
+            Totoy => include_bytes!("../theme/sprites/brown-totoy.gif"),
             Xkcd => include_bytes!("../theme/sprites/brown-xkcd.gif"),
         },
 
@@ -270,6 +278,7 @@ pub fn sprite_data(board: BoardTheme, pieces: PieceSet) -> &'static [u8] {
             Merida => include_bytes!("../theme/sprites/green-merida.gif"),
             Monarchy => include_bytes!("../theme/sprites/green-monarchy.gif"),
             Mpchess => include_bytes!("../theme/sprites/green-mpchess.gif"),
+            Papercut => include_bytes!("../theme/sprites/green-papercut.gif"),
             Pirouetti => include_bytes!("../theme/sprites/green-pirouetti.gif"),
             Pixel => include_bytes!("../theme/sprites/green-pixel.gif"),
             Reillycraig => include_bytes!("../theme/sprites/green-reillycraig.gif"),
@@ -279,6 +288,7 @@ pub fn sprite_data(board: BoardTheme, pieces: PieceSet) -> &'static [u8] {
             Spatial => include_bytes!("../theme/sprites/green-spatial.gif"),
             Staunty => include_bytes!("../theme/sprites/green-staunty.gif"),
             Tatiana => include_bytes!("../theme/sprites/green-tatiana.gif"),
+            Totoy => include_bytes!("../theme/sprites/green-totoy.gif"),
             Xkcd => include_bytes!("../theme/sprites/green-xkcd.gif"),
         },
 
@@ -311,6 +321,7 @@ pub fn sprite_data(board: BoardTheme, pieces: PieceSet) -> &'static [u8] {
             Merida => include_bytes!("../theme/sprites/ic-merida.gif"),
             Monarchy => include_bytes!("../theme/sprites/ic-monarchy.gif"),
             Mpchess => include_bytes!("../theme/sprites/ic-mpchess.gif"),
+            Papercut => include_bytes!("../theme/sprites/ic-papercut.gif"),
             Pirouetti => include_bytes!("../theme/sprites/ic-pirouetti.gif"),
             Pixel => include_bytes!("../theme/sprites/ic-pixel.gif"),
             Reillycraig => include_bytes!("../theme/sprites/ic-reillycraig.gif"),
@@ -320,6 +331,7 @@ pub fn sprite_data(board: BoardTheme, pieces: PieceSet) -> &'static [u8] {
             Spatial => include_bytes!("../theme/sprites/ic-spatial.gif"),
             Staunty => include_bytes!("../theme/sprites/ic-staunty.gif"),
             Tatiana => include_bytes!("../theme/sprites/ic-tatiana.gif"),
+            Totoy => include_bytes!("../theme/sprites/ic-totoy.gif"),
             Xkcd => include_bytes!("../theme/sprites/ic-xkcd.gif"),
         },
 
@@ -352,6 +364,7 @@ pub fn sprite_data(board: BoardTheme, pieces: PieceSet) -> &'static [u8] {
             Merida => include_bytes!("../theme/sprites/pink-merida.gif"),
             Monarchy => include_bytes!("../theme/sprites/pink-monarchy.gif"),
             Mpchess => include_bytes!("../theme/sprites/pink-mpchess.gif"),
+            Papercut => include_bytes!("../theme/sprites/pink-papercut.gif"),
             Pirouetti => include_bytes!("../theme/sprites/pink-pirouetti.gif"),
             Pixel => include_bytes!("../theme/sprites/pink-pixel.gif"),
             Reillycraig => include_bytes!("../theme/sprites/pink-reillycraig.gif"),
@@ -361,6 +374,7 @@ pub fn sprite_data(board: BoardTheme, pieces: PieceSet) -> &'static [u8] {
             Spatial => include_bytes!("../theme/sprites/pink-spatial.gif"),
             Staunty => include_bytes!("../theme/sprites/pink-staunty.gif"),
             Tatiana => include_bytes!("../theme/sprites/pink-tatiana.gif"),
+            Totoy => include_bytes!("../theme/sprites/pink-totoy.gif"),
             Xkcd => include_bytes!("../theme/sprites/pink-xkcd.gif"),
         },
 
@@ -393,6 +407,7 @@ pub fn sprite_data(board: BoardTheme, pieces: PieceSet) -> &'static [u8] {
             Merida => include_bytes!("../theme/sprites/purple-merida.gif"),
             Monarchy => include_bytes!("../theme/sprites/purple-monarchy.gif"),
             Mpchess => include_bytes!("../theme/sprites/purple-mpchess.gif"),
+            Papercut => include_bytes!("../theme/sprites/purple-papercut.gif"),
             Pirouetti => include_bytes!("../theme/sprites/purple-pirouetti.gif"),
             Pixel => include_bytes!("../theme/sprites/purple-pixel.gif"),
             Reillycraig => include_bytes!("../theme/sprites/purple-reillycraig.gif"),
@@ -402,6 +417,7 @@ pub fn sprite_data(board: BoardTheme, pieces: PieceSet) -> &'static [u8] {
             Spatial => include_bytes!("../theme/sprites/purple-spatial.gif"),
             Staunty => include_bytes!("../theme/sprites/purple-staunty.gif"),
             Tatiana => include_bytes!("../theme/sprites/purple-tatiana.gif"),
+            Totoy => include_bytes!("../theme/sprites/purple-totoy.gif"),
             Xkcd => include_bytes!("../theme/sprites/purple-xkcd.gif"),
         },
     }
