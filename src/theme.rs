@@ -136,6 +136,36 @@ impl Theme {
         self.gradient_color(Gradient::TransparentTransparent, 1.0)
     }
 
+    pub fn nearest_color(&self, hex: &str) -> u8 {
+        let value = hex.strip_prefix('#').unwrap_or(hex);
+        let target = u32::from_str_radix(value, 16).unwrap_or(0xffffff);
+        let target = [((target >> 16) & 0xff) as i32, ((target >> 8) & 0xff) as i32, (target & 0xff) as i32];
+        self.global_color_table
+            .colors()
+            .chunks_exact(3)
+            .enumerate()
+            .min_by_key(|(_, color)| {
+                (color[0] as i32 - target[0]).pow(2)
+                    + (color[1] as i32 - target[1]).pow(2)
+                    + (color[2] as i32 - target[2]).pow(2)
+            })
+            .map_or(0, |(index, _)| index as u8)
+    }
+
+    pub fn nearest_rgb(&self, red: u8, green: u8, blue: u8) -> u8 {
+        self.global_color_table
+            .colors()
+            .chunks_exact(3)
+            .enumerate()
+            .filter(|(index, _)| *index != self.transparent_color() as usize)
+            .min_by_key(|(_, color)| {
+                (color[0] as i32 - red as i32).pow(2)
+                    + (color[1] as i32 - green as i32).pow(2)
+                    + (color[2] as i32 - blue as i32).pow(2)
+            })
+            .map_or(0, |(index, _)| index as u8)
+    }
+
     pub fn glyph_background_color(&self, glyph: MoveGlyph) -> u8 {
         self.gradient_color(Gradient::from(glyph), 0.0)
     }

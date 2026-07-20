@@ -1,6 +1,6 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Debug, Default, Copy, Clone)]
+#[derive(Deserialize, Serialize, Debug, Default, Copy, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum BoardTheme {
     #[serde(alias = "blue2")]
@@ -51,7 +51,7 @@ impl<T> ByBoardTheme<T> {
     }
 }
 
-#[derive(Deserialize, Debug, Default, Copy, Clone, Eq, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Default, Copy, Clone, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum PieceSet {
     Alpha,

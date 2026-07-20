@@ -1,7 +1,7 @@
 use std::fmt;
 
 use arrayvec::ArrayString;
-use serde::{Deserialize, de};
+use serde::{Deserialize, Serialize, de};
 use serde_with::{DisplayFromStr, serde_as};
 use shakmaty::{
     CastlingMode, Chess, EnPassantMode, Position, Setup, Square, fen::Fen, san::SanPlus,
@@ -10,7 +10,7 @@ use shakmaty::{
 
 use crate::assets::{BoardTheme, PieceSet};
 
-#[derive(Deserialize, Debug, Default, PartialEq, Eq, Copy, Clone)]
+#[derive(Deserialize, Serialize, Debug, Default, PartialEq, Eq, Copy, Clone)]
 pub enum Orientation {
     #[serde(rename = "white")]
     #[default]
@@ -93,7 +93,7 @@ impl<'de> Deserialize<'de> for CheckSquare {
     }
 }
 
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Serialize)]
 pub enum Coordinates {
     No,
     #[default]

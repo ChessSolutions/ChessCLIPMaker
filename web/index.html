@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ChessClip GIF Studio</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel controls">
+        <h1>ChessClip GIF Studio</h1>
+        <p>Import a PGN, choose a move range, compose a timeline, and export a GIF.</p>
+
+        <div class="group">
+          <label for="pgn">PGN</label>
+          <textarea id="pgn" rows="14" placeholder="Paste a PGN here"></textarea>
+        </div>
+
+        <div class="row">
+          <input id="lichess-url" type="text" placeholder="https://lichess.org/abc123" />
+          <button id="import-lichess">Import Lichess</button>
+        </div>
+
+        <div class="row actions">
+          <button id="parse-pgn">Parse PGN</button>
+          <button id="build-timeline">Build Timeline</button>
+          <button id="preview-gif">Preview GIF</button>
+          <button id="download-gif">Download GIF</button>
+        </div>
+
+        <div class="group">
+          <label for="move-start">Move range</label>
+          <div class="row range-row">
+            <input id="move-start" type="number" min="0" value="0" />
+            <span>to</span>
+            <input id="move-end" type="number" min="0" value="0" />
+          </div>
+        </div>
+
+        <div class="group">
+          <label for="move-delay">Frame duration (ms)</label>
+          <input id="move-delay" type="number" min="20" step="10" value="1000" />
+        </div>
+
+        <div class="group">
+          <div class="section-heading">
+            <label for="caption-text">Caption frame</label>
+            <button id="caption-settings-open" class="settings-button secondary" type="button" aria-label="Caption settings" title="Caption settings">⚙</button>
+          </div>
+          <textarea id="caption-text" rows="3" placeholder="Add a caption to the timeline"></textarea>
+          <button id="add-caption">Add caption frame</button>
+        </div>
+
+        <dialog id="caption-settings">
+          <div class="dialog-heading">
+            <h2>Caption settings</h2>
+            <button id="caption-settings-close" class="secondary icon-button" type="button" aria-label="Close caption settings">×</button>
+          </div>
+          <div class="caption-options">
+            <label>Google font
+              <select id="caption-font">
+                <option value="Noto Sans">Noto Sans</option>
+              </select>
+            </label>
+            <label>Text color
+              <input id="caption-color" type="color" value="#ffffff" />
+            </label>
+            <label>Background
+              <input id="caption-background" type="color" value="#131313" />
+            </label>
+            <label>Duration (ms)
+              <input id="caption-duration" type="number" min="20" max="30000" step="10" value="2000" />
+            </label>
+          </div>
+          <button id="caption-settings-done" type="button">Done</button>
+        </dialog>
+
+        <dialog id="media-editor">
+          <div class="dialog-heading">
+            <h2>Resize media</h2>
+            <button id="media-editor-close" class="secondary icon-button" type="button" aria-label="Close media editor">×</button>
+          </div>
+          <div class="media-crop-preview">
+            <img id="media-editor-image" alt="Media crop preview" />
+          </div>
+          <div class="media-controls">
+            <label>Zoom <input id="media-scale" type="range" min="25" max="300" value="100" /></label>
+            <label>Horizontal position <input id="media-offset-x" type="range" min="-100" max="100" value="0" /></label>
+            <label>Vertical position <input id="media-offset-y" type="range" min="-100" max="100" value="0" /></label>
+          </div>
+          <div class="row dialog-actions">
+            <button id="media-editor-reset" class="secondary" type="button">Reset</button>
+            <button id="media-editor-add" type="button">Add to timeline</button>
+          </div>
+        </dialog>
+
+        <div class="group">
+          <label for="media-file">Picture or animated GIF</label>
+          <div class="row">
+            <input id="media-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
+            <input id="media-duration" type="number" min="20" max="30000" step="10" value="2000" title="Duration for a static picture" />
+            <button id="add-media">Add media</button>
+          </div>
+        </div>
+
+        <div class="group">
+          <h2>Timeline</h2>
+          <ul id="timeline-list"></ul>
+        </div>
+      </section>
+
+      <section class="panel preview">
+        <h2>Preview</h2>
+        <img id="preview-image" alt="Generated chess GIF preview" />
+        <p id="status">No preview generated yet.</p>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

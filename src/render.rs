@@ -1,13 +1,16 @@
 use std::{iter::FusedIterator, vec};
 
 use bytes::{BufMut, Bytes, BytesMut};
+use base64::Engine;
 use gift::{Encoder, block};
+use image::{AnimationDecoder, DynamicImage, Frame as ImageFrame, imageops::FilterType};
 use ndarray::{ArrayView2, ArrayViewMut2, s};
 use rusttype::{Font, PositionedGlyph, Scale};
 use shakmaty::{Bitboard, Board, File, Rank, Square, uci::UciMove};
 
 use crate::{
     api::{Comment, Coordinates, MoveGlyph, Orientation, PlayerName, RequestBody, RequestParams},
+    compose::{BoardTimelineFrame, CaptionStyle, CaptionTimelineFrame},
     theme::{Gradient, Sprite, SpriteKey, Theme, Themes},
 };
 
@@ -22,6 +25,26 @@ enum RenderState {
     Frame(RenderFrame),
     Complete,
 }
+
+#[derive(Clone)]
+pub struct CaptionRenderFrame {
+    pub text: String,
+    pub secondary_text: Option<String>,
+    pub style: CaptionStyle,
+    pub delay_ms: u64,
+}
+
+impl CaptionRenderFrame {
+    pub fn from_caption(frame: &CaptionTimelineFrame) -> Self {
+        Self {
+            text: frame.text.clone(),
+            secondary_text: frame.secondary_text.clone(),
+            style: frame.style.clone(),
+            delay_ms: frame.duration_ms,
+        }
+    }
+}
+
 
 struct PlayerBars {
     white: PlayerName,
@@ -49,7 +72,7 @@ impl PlayerBars {
 }
 
 #[derive(Default)]
-struct RenderFrame {
+pub struct RenderFrame {
     board: Board,
     highlighted: Bitboard,
     checked: Bitboard,
@@ -57,9 +80,100 @@ struct RenderFrame {
     glyph: Option<MoveGlyph>,
     white_clock: Option<u32>,
     black_clock: Option<u32>,
+    caption: Option<CaptionRenderFrame>,
+    raster: Option<Vec<u8>>,
 }
 
 impl RenderFrame {
+    pub fn from_board(frame: &BoardTimelineFrame) -> Self {
+        let fen = frame.fen.parse::<shakmaty::fen::Fen>().unwrap_or_default();
+        let board = fen.into_setup().board;
+        let mut check_bitboard = Bitboard::EMPTY;
+        let mut highlighted = Bitboard::EMPTY;
+        if let Some(last_move) = frame.last_move.as_ref() {
+            highlighted = highlight_uci(last_move.parse::<UciMove>().ok());
+        }
+        if let Some(check) = frame.check.as_ref() {
+            if let Ok(square) = check.parse::<Square>() {
+                check_bitboard = Bitboard::from(square);
+            }
+        }
+        let glyph = frame.glyph.as_ref().and_then(|value| value.parse::<MoveGlyph>().ok());
+        Self {
+            board,
+            highlighted,
+            checked: check_bitboard,
+            delay: Some(milliseconds_to_centiseconds(frame.duration_ms)),
+            glyph,
+            white_clock: frame.clock.as_ref().and_then(|c| c.white),
+            black_clock: frame.clock.as_ref().and_then(|c| c.black),
+            caption: None,
+            raster: None,
+        }
+    }
+
+    pub fn from_caption(frame: &CaptionTimelineFrame) -> Self {
+        Self {
+            board: Board::default(),
+            highlighted: Bitboard::EMPTY,
+            checked: Bitboard::EMPTY,
+            delay: Some(milliseconds_to_centiseconds(frame.duration_ms)),
+            glyph: None,
+            white_clock: None,
+            black_clock: None,
+            caption: Some(CaptionRenderFrame::from_caption(frame)),
+            raster: None,
+        }
+    }
+
+    pub fn from_media(theme: &Theme, frame: &crate::compose::MediaTimelineFrame) -> Result<Vec<Self>, String> {
+        let (_, encoded) = frame.data_url.split_once(',').ok_or("invalid media data")?;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .map_err(|_| "invalid media encoding")?;
+        let images: Vec<(DynamicImage, u64)> = if bytes.starts_with(b"GIF8") {
+            let decoder = image::codecs::gif::GifDecoder::new(std::io::Cursor::new(&bytes))
+                .map_err(|_| "could not decode GIF")?;
+            decoder.into_frames().collect_frames().map_err(|_| "could not decode GIF frames")?
+                .into_iter()
+                .map(|image_frame: ImageFrame| {
+                    let (numerator, denominator) = image_frame.delay().numer_denom_ms();
+                    let delay = (numerator as u64 / denominator.max(1) as u64).max(20);
+                    (DynamicImage::ImageRgba8(image_frame.into_buffer()), delay)
+                })
+                .collect()
+        } else {
+            vec![(image::load_from_memory(&bytes).map_err(|_| "could not decode image")?, frame.duration_ms)]
+        };
+        if images.len() > 200 {
+            return Err("animated GIF exceeds 200 frames".to_string());
+        }
+        Ok(images.into_iter().map(|(image, delay)| {
+            let canvas_width = theme.width() as u32;
+            let canvas_height = theme.height(false) as u32;
+            let fit = (canvas_width as f32 / image.width() as f32)
+                .min(canvas_height as f32 / image.height() as f32);
+            let scale = frame.scale.clamp(0.25, 3.0);
+            let resized_width = ((image.width() as f32 * fit * scale).round() as u32).max(1);
+            let resized_height = ((image.height() as f32 * fit * scale).round() as u32).max(1);
+            let resized = image.resize_exact(resized_width, resized_height, FilterType::Lanczos3).to_rgba8();
+            let mut fitted = image::RgbaImage::new(canvas_width, canvas_height);
+            let available_x = canvas_width as i64 - resized_width as i64;
+            let available_y = canvas_height as i64 - resized_height as i64;
+            let x = available_x / 2 + (frame.offset_x.clamp(-100.0, 100.0) / 100.0 * canvas_width as f32 / 2.0) as i64;
+            let y = available_y / 2 + (frame.offset_y.clamp(-100.0, 100.0) / 100.0 * canvas_height as f32 / 2.0) as i64;
+            image::imageops::overlay(&mut fitted, &resized, x, y);
+            let raster = fitted.pixels().map(|pixel| {
+                if pixel[3] < 32 { theme.transparent_color() } else { theme.nearest_rgb(pixel[0], pixel[1], pixel[2]) }
+            }).collect();
+            Self {
+                delay: Some(milliseconds_to_centiseconds(delay)),
+                raster: Some(raster),
+                ..Self::default()
+            }
+        }).collect())
+    }
+
     fn diff(&self, prev: &RenderFrame) -> Bitboard {
         (prev.checked ^ self.checked)
             | (prev.highlighted ^ self.highlighted)
@@ -71,6 +185,10 @@ impl RenderFrame {
             | (prev.board.queens() ^ self.board.queens())
             | (prev.board.kings() ^ self.board.kings())
     }
+}
+
+fn milliseconds_to_centiseconds(milliseconds: u64) -> u16 {
+    milliseconds.div_ceil(10).min(u16::MAX as u64) as u16
 }
 
 pub struct Render {
@@ -112,6 +230,8 @@ impl Render {
                 glyph: None,
                 white_clock: None,
                 black_clock: None,
+                caption: None,
+                raster: None,
             }]
             .into_iter(),
             kork: false,
@@ -151,10 +271,34 @@ impl Render {
                     glyph: frame.glyph,
                     white_clock: frame.clock.white,
                     black_clock: frame.clock.black,
+                    caption: None,
+                    raster: None,
                 })
                 .collect::<Vec<_>>()
                 .into_iter(),
             kork: true,
+            clock_widths: [0; 2],
+        }
+    }
+
+    pub fn new_composed(
+        themes: &'static Themes,
+        params: crate::compose::ComposeRequest,
+        frames: Vec<RenderFrame>,
+    ) -> Render {
+        let bars = None;
+        let theme = themes.get(params.theme, params.piece);
+        Render {
+            theme,
+            font: themes.font(),
+            buffer: vec![0; theme.height(bars.is_some()) * theme.width()],
+            state: RenderState::Preamble,
+            comment: None,
+            bars,
+            orientation: params.orientation,
+            coordinates: params.coordinates,
+            frames: frames.into_iter(),
+            kork: false,
             clock_widths: [0; 2],
         }
     }
@@ -262,12 +406,11 @@ impl Iterator for Render {
                     blocks.encode(ctrl).expect("enc graphic control");
                 }
 
-                render_diff(
-                    board_view.as_slice_mut().expect("continguous"),
+                render_frame_contents(
+                    board_view.as_slice_mut().expect("contiguous"),
                     self.theme,
                     self.orientation,
                     self.coordinates,
-                    None,
                     &frame,
                     self.font,
                 );
@@ -342,12 +485,11 @@ impl Iterator for Render {
                     }
                     blocks.encode(ctrl).expect("enc graphic control");
 
-                    let ((left, y), (w, h)) = render_diff(
+                    let ((left, y), (w, h)) = render_frame_contents(
                         &mut self.buffer,
                         self.theme,
                         self.orientation,
                         self.coordinates,
-                        Some(prev),
                         &frame,
                         self.font,
                     );
@@ -480,16 +622,29 @@ fn render_glyph_badge(
     );
 }
 
-fn render_diff(
+fn render_frame_contents(
     buffer: &mut [u8],
     theme: &Theme,
     orientation: Orientation,
     coordinates: Coordinates,
-    prev: Option<&RenderFrame>,
     frame: &RenderFrame,
     font: &Font,
 ) -> ((usize, usize), (usize, usize)) {
-    let diff = prev.map_or(Bitboard::FULL, |p| p.diff(frame));
+    if let Some(caption) = &frame.caption {
+        let width = theme.width();
+        let height = theme.height(false);
+        let mut view = ArrayViewMut2::from_shape((height, width), buffer).expect("shape");
+        view.fill(theme.nearest_color(&caption.style.background_color));
+        render_caption(&mut view, theme, font, caption);
+        return ((0, 0), (width, height));
+    }
+
+    if let Some(raster) = &frame.raster {
+        buffer[..raster.len()].copy_from_slice(raster);
+        return ((0, 0), (theme.width(), theme.height(false)));
+    }
+
+    let diff = Bitboard::FULL;
 
     let x_min = diff
         .into_iter()
@@ -518,10 +673,7 @@ fn render_diff(
     let height = (y_max - y_min) * theme.square();
 
     let mut view = ArrayViewMut2::from_shape((height, width), buffer).expect("shape");
-
-    if prev.is_some() {
-        view.fill(theme.transparent_color());
-    }
+    view.fill(theme.transparent_color());
 
     for sq in diff {
         let key = SpriteKey {
@@ -570,6 +722,58 @@ fn render_diff(
         (theme.square() * x_min, theme.square() * y_min),
         (width, height),
     )
+}
+
+fn render_caption(
+    view: &mut ArrayViewMut2<u8>,
+    theme: &Theme,
+    font: &Font,
+    caption: &CaptionRenderFrame,
+) {
+    let text = caption.text.as_str();
+    let scale = Scale {
+        x: caption.style.font_size as f32,
+        y: caption.style.font_size as f32,
+    };
+    let v_metrics = font.v_metrics(scale);
+    let width = view.shape()[1];
+    let height = view.shape()[0];
+    let mut text_view = view.slice_mut(s!(.., ..));
+    text_view.fill(theme.nearest_color(&caption.style.background_color));
+    let lines = text.lines().take(6).collect::<Vec<_>>();
+    let mut y = caption.style.padding as usize;
+    for line in lines {
+        let line_glyphs: Vec<_> = font.layout(line, scale, rusttype::point(0.0, v_metrics.ascent)).collect();
+        let line_width = line_glyphs.iter().filter_map(|g| g.pixel_bounding_box()).map(|bb| bb.max.x).max().unwrap_or(0) as usize;
+        let x = match caption.style.horizontal_align {
+            crate::compose::HorizontalAlign::Center => (width.saturating_sub(line_width)) / 2,
+            crate::compose::HorizontalAlign::Right => width.saturating_sub(line_width),
+            crate::compose::HorizontalAlign::Left => caption.style.padding as usize,
+        };
+        let glyph_offset = y;
+        let mut line_view = text_view.slice_mut(s!(glyph_offset..(glyph_offset + caption.style.font_size as usize), x..));
+        render_caption_text(&mut line_view, line_glyphs, theme.nearest_color(&caption.style.text_color));
+        y += caption.style.font_size as usize + 8;
+    }
+    let _ = (width, height);
+}
+
+fn render_caption_text<'a>(
+    view: &mut ArrayViewMut2<'_, u8>,
+    glyphs: impl IntoIterator<Item = PositionedGlyph<'a>>,
+    color: u8,
+) {
+    for glyph in glyphs {
+        if let Some(bb) = glyph.pixel_bounding_box() {
+            glyph.draw(|left, top, intensity| {
+                if intensity > 0.25
+                    && let Some(pixel) = view.get_mut(((bb.min.y + top as i32) as usize, (bb.min.x + left as i32) as usize))
+                {
+                    *pixel = color;
+                }
+            });
+        }
+    }
 }
 
 fn render_file(
