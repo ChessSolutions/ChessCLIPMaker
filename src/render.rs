@@ -740,6 +740,7 @@ fn render_caption(
     let height = view.shape()[0];
     let mut text_view = view.slice_mut(s!(.., ..));
     text_view.fill(theme.nearest_color(&caption.style.background_color));
+    let caption_gradient = theme.caption_gradient(&caption.style.text_color, &caption.style.background_color);
     let lines = text.lines().take(6).collect::<Vec<_>>();
     let mut y = caption.style.padding as usize;
     for line in lines {
@@ -752,7 +753,7 @@ fn render_caption(
         };
         let glyph_offset = y;
         let mut line_view = text_view.slice_mut(s!(glyph_offset..(glyph_offset + caption.style.font_size as usize), x..));
-        render_caption_text(&mut line_view, line_glyphs, theme.nearest_color(&caption.style.text_color));
+        render_caption_text(&mut line_view, line_glyphs, &caption_gradient);
         y += caption.style.font_size as usize + 8;
     }
     let _ = (width, height);
@@ -761,15 +762,15 @@ fn render_caption(
 fn render_caption_text<'a>(
     view: &mut ArrayViewMut2<'_, u8>,
     glyphs: impl IntoIterator<Item = PositionedGlyph<'a>>,
-    color: u8,
+    colors: &[u8; 16],
 ) {
     for glyph in glyphs {
         if let Some(bb) = glyph.pixel_bounding_box() {
             glyph.draw(|left, top, intensity| {
-                if intensity > 0.25
+                if intensity > 0.03
                     && let Some(pixel) = view.get_mut(((bb.min.y + top as i32) as usize, (bb.min.x + left as i32) as usize))
                 {
-                    *pixel = color;
+                    *pixel = colors[(intensity * 15.0).round().clamp(0.0, 15.0) as usize];
                 }
             });
         }

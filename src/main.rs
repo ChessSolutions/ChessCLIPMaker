@@ -2,7 +2,7 @@ use std::{convert::Infallible, net::SocketAddr};
 
 use axum::{
     body::Body,
-    extract::Query,
+    extract::{DefaultBodyLimit, Query},
     http::{header::CONTENT_TYPE, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -21,9 +21,19 @@ mod render;
 mod theme;
 
 use api::{RequestBody, RequestParams};
-use compose::{ComposeRequest, LichessImportRequest, ParseRequest, parse_pgn};
+use compose::{ComposeRequest, LatestGameRequest, LichessImportRequest, ParseRequest, parse_pgn};
 use render::Render;
 use theme::Themes;
+
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+struct SavedAccounts {
+    #[serde(default)]
+    lichess: Vec<String>,
+    #[serde(default)]
+    chesscom: Vec<String>,
+    default_lichess: Option<String>,
+    default_chesscom: Option<String>,
+}
 
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
@@ -102,6 +112,10 @@ async fn editor_script() -> impl IntoResponse {
     serve_editor_file("app.js", "application/javascript; charset=utf-8").await
 }
 
+async fn google_fonts() -> impl IntoResponse {
+    serve_editor_file("google-fonts.json", "application/json").await
+}
+
 async fn serve_editor_file(name: &str, content_type: &'static str) -> Response {
     match tokio::fs::read(format!("web/{name}")).await {
         Ok(body) => (StatusCode::OK, [(CONTENT_TYPE, content_type)], body).into_response(),
@@ -142,21 +156,111 @@ async fn parse_pgn_endpoint(Json(req): Json<ParseRequest>) -> impl IntoResponse 
 }
 
 async fn lichess_import(Json(req): Json<LichessImportRequest>) -> impl IntoResponse {
-    let game_id = req.url.trim().split('/').last().unwrap_or_default().to_string();
+    let game_id = reqwest::Url::parse(req.url.trim())
+        .ok()
+        .and_then(|url| url.path_segments()?.filter(|part| !part.is_empty()).last().map(str::to_string))
+        .and_then(|part| part.get(..8.min(part.len())).map(str::to_string))
+        .unwrap_or_default();
     if game_id.is_empty() {
         return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "invalid lichess url"}))).into_response();
     }
-    let pgn = match reqwest::get(format!("https://lichess.org/game/export/{}", game_id)).await {
-        Ok(res) => match res.text().await {
-            Ok(body) => body,
-            Err(_) => return (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": "import failed"}))).into_response(),
-        },
-        Err(_) => return (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": "import failed"}))).into_response(),
+    fetch_pgn(format!("https://lichess.org/game/export/{game_id}"), Some("application/x-chess-pgn")).await
+}
+
+async fn latest_game(Json(req): Json<LatestGameRequest>) -> impl IntoResponse {
+    let username = req.username.trim();
+    if username.is_empty() || !username.chars().all(|ch| ch.is_ascii_alphanumeric() || "_-".contains(ch)) {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "invalid username"}))).into_response();
+    }
+    match req.site.as_str() {
+        "lichess" => fetch_pgn(
+            format!("https://lichess.org/api/games/user/{username}?max=1"),
+            Some("application/x-chess-pgn"),
+        ).await,
+        "chesscom" => {
+            let client = reqwest::Client::new();
+            let archives: serde_json::Value = match client
+                .get(format!("https://api.chess.com/pub/player/{username}/games/archives"))
+                .header(reqwest::header::USER_AGENT, "ChessClipMaker/1.0")
+                .send().await
+            {
+                Ok(response) if response.status().is_success() => match response.json().await {
+                    Ok(value) => value,
+                    Err(_) => return import_error("Chess.com returned invalid archive data"),
+                },
+                _ => return import_error("Chess.com player was not found"),
+            };
+            let Some(archive) = archives["archives"].as_array().and_then(|items| items.last()).and_then(|value| value.as_str()) else {
+                return import_error("No Chess.com games were found");
+            };
+            let games: serde_json::Value = match client.get(archive).header(reqwest::header::USER_AGENT, "ChessClipMaker/1.0").send().await {
+                Ok(response) if response.status().is_success() => match response.json().await {
+                    Ok(value) => value,
+                    Err(_) => return import_error("Chess.com returned invalid game data"),
+                },
+                _ => return import_error("Could not retrieve Chess.com games"),
+            };
+            let Some(pgn) = games["games"].as_array().and_then(|items| items.last()).and_then(|game| game["pgn"].as_str()) else {
+                return import_error("No Chess.com games were found");
+            };
+            (StatusCode::OK, Json(serde_json::json!({"pgn": pgn}))).into_response()
+        }
+        _ => (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "unsupported chess site"}))).into_response(),
+    }
+}
+
+async fn fetch_pgn(url: String, accept: Option<&str>) -> Response {
+    let client = reqwest::Client::new();
+    let mut request = client.get(url).header(reqwest::header::USER_AGENT, "ChessClipMaker/1.0");
+    if let Some(accept) = accept { request = request.header(reqwest::header::ACCEPT, accept); }
+    let response = match request.send().await {
+        Ok(response) if response.status().is_success() => response,
+        Ok(response) => return import_error(&format!("Game service returned {}", response.status())),
+        Err(_) => return import_error("Could not connect to the game service"),
     };
-    if pgn.contains("Private game") || pgn.is_empty() {
-        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "private or unavailable game"}))).into_response();
+    let pgn = match response.text().await { Ok(body) => body, Err(_) => return import_error("Could not read the PGN") };
+    if !pgn.trim_start().starts_with('[') || !pgn.contains("1.") {
+        return import_error("The game service did not return PGN data");
     }
     (StatusCode::OK, Json(serde_json::json!({"pgn": pgn}))).into_response()
+}
+
+fn import_error(message: &str) -> Response {
+    (StatusCode::BAD_GATEWAY, Json(serde_json::json!({"error": message}))).into_response()
+}
+
+async fn get_accounts() -> impl IntoResponse {
+    match tokio::fs::read_to_string("accounts.json").await {
+        Ok(body) => (StatusCode::OK, [(CONTENT_TYPE, "application/json")], body).into_response(),
+        Err(_) => Json(SavedAccounts::default()).into_response(),
+    }
+}
+
+async fn save_accounts(Json(mut accounts): Json<SavedAccounts>) -> impl IntoResponse {
+    accounts.lichess.retain(|name| valid_username(name));
+    accounts.chesscom.retain(|name| valid_username(name));
+    accounts.lichess.sort();
+    accounts.lichess.dedup();
+    accounts.chesscom.sort();
+    accounts.chesscom.dedup();
+    if !accounts.default_lichess.as_ref().is_some_and(|name| accounts.lichess.contains(name)) {
+        accounts.default_lichess = accounts.lichess.first().cloned();
+    }
+    if !accounts.default_chesscom.as_ref().is_some_and(|name| accounts.chesscom.contains(name)) {
+        accounts.default_chesscom = accounts.chesscom.first().cloned();
+    }
+    let body = match serde_json::to_string_pretty(&accounts) {
+        Ok(body) => body,
+        Err(_) => return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "invalid accounts"}))).into_response(),
+    };
+    match tokio::fs::write("accounts.json", format!("{body}\n")).await {
+        Ok(_) => Json(accounts).into_response(),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": "could not save accounts.json"}))).into_response(),
+    }
+}
+
+fn valid_username(name: &String) -> bool {
+    !name.is_empty() && name.chars().all(|ch| ch.is_ascii_alphanumeric() || "_-".contains(ch))
 }
 
 #[tokio::main]
@@ -171,12 +275,18 @@ async fn main() {
         .route("/assets/{*path}", get(editor_asset))
         .route("/image.gif", get(move |req| image(themes, req)))
         .route("/game.gif", post(move |req| game(themes, req)))
-        .route("/compose.gif", post(move |req| compose(themes, req)))
+        .route(
+            "/compose.gif",
+            post(move |req| compose(themes, req)).layer(DefaultBodyLimit::max(25 * 1024 * 1024)),
+        )
         .route("/api/pgn/parse", post(parse_pgn_endpoint))
         .route("/api/lichess/import", post(lichess_import))
+        .route("/api/latest-game", post(latest_game))
+        .route("/api/accounts", get(get_accounts).post(save_accounts))
         .route("/example.gif", get(move || example(themes)))
         .route("/styles.css", get(editor_styles))
-        .route("/app.js", get(editor_script));
+        .route("/app.js", get(editor_script))
+        .route("/google-fonts.json", get(google_fonts));
 
     let mut fds = ListenFd::from_env();
     if let Ok(Some(uds)) = fds.take_unix_listener(0) {

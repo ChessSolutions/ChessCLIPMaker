@@ -224,6 +224,12 @@ pub struct LichessImportResponse {
     pub pgn: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LatestGameRequest {
+    pub site: String,
+    pub username: String,
+}
+
 pub fn parse_pgn(pgn: &str) -> Result<ParsedGame, String> {
     let mut metadata = serde_json::Map::new();
     let mut lines = pgn.lines();

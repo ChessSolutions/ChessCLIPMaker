@@ -1,0 +1,11 @@
+{
+  "lichess": [
+    "MassterofMayhem",
+    "imovewood"
+  ],
+  "chesscom": [
+    "gmoves"
+  ],
+  "default_lichess": "imovewood",
+  "default_chesscom": "gmoves"
+}

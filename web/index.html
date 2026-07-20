@@ -9,12 +9,15 @@
   <body>
     <main class="shell">
       <section class="panel controls">
-        <h1>ChessClip GIF Studio</h1>
+        <div class="section-heading">
+          <h1>ChessClip GIF Studio</h1>
+          <button id="account-settings-open" class="settings-button secondary" type="button" aria-label="Account settings" title="Saved chess accounts">⚙</button>
+        </div>
         <p>Import a PGN, choose a move range, compose a timeline, and export a GIF.</p>
 
         <div class="group">
           <label for="pgn">PGN</label>
-          <textarea id="pgn" rows="14" placeholder="Paste a PGN here"></textarea>
+          <textarea id="pgn" class="pgn-input" rows="5" placeholder="Paste a PGN here"></textarea>
         </div>
 
         <div class="row">
@@ -25,8 +28,6 @@
         <div class="row actions">
           <button id="parse-pgn">Parse PGN</button>
           <button id="build-timeline">Build Timeline</button>
-          <button id="preview-gif">Preview GIF</button>
-          <button id="download-gif">Download GIF</button>
         </div>
 
         <div class="group">
@@ -48,8 +49,19 @@
             <label for="caption-text">Caption frame</label>
             <button id="caption-settings-open" class="settings-button secondary" type="button" aria-label="Caption settings" title="Caption settings">⚙</button>
           </div>
-          <textarea id="caption-text" rows="3" placeholder="Add a caption to the timeline"></textarea>
+          <div class="caption-editor-shell">
+            <div class="caption-editor-toolbar">
+              <span>Text editor</span>
+              <span id="caption-character-count">0 characters</span>
+            </div>
+            <textarea id="caption-text" rows="5" maxlength="500" placeholder="Write the caption exactly as it should appear. Use Enter for a new line."></textarea>
+          </div>
           <button id="add-caption">Add caption frame</button>
+          <label class="toggle-row">
+            <input id="auto-title-card" type="checkbox" checked />
+            Automatically add player, rating, and date caption
+          </label>
+          <button id="add-title-card" class="secondary" type="button">Add game info caption now</button>
         </div>
 
         <dialog id="caption-settings">
@@ -59,10 +71,13 @@
           </div>
           <div class="caption-options">
             <label>Google font
-              <select id="caption-font">
-                <option value="Noto Sans">Noto Sans</option>
-              </select>
+              <select id="caption-font"></select>
             </label>
+            <label>Font size <input id="caption-font-size" type="number" min="16" max="140" value="56" /></label>
+            <label>Alignment
+              <select id="caption-align"><option value="left">Left</option><option value="center" selected>Center</option><option value="right">Right</option></select>
+            </label>
+            <label>Padding <input id="caption-padding" type="number" min="0" max="200" value="48" /></label>
             <label>Text color
               <input id="caption-color" type="color" value="#ffffff" />
             </label>
@@ -70,7 +85,7 @@
               <input id="caption-background" type="color" value="#131313" />
             </label>
             <label>Duration (ms)
-              <input id="caption-duration" type="number" min="20" max="30000" step="10" value="2000" />
+              <input id="caption-duration" type="number" min="20" max="30000" step="10" value="2500" />
             </label>
           </div>
           <button id="caption-settings-done" type="button">Done</button>
@@ -95,25 +110,91 @@
           </div>
         </dialog>
 
+        <dialog id="account-settings">
+          <div class="dialog-heading">
+            <h2>Saved chess accounts</h2>
+            <button id="account-settings-close" class="secondary icon-button" type="button" aria-label="Close account settings">×</button>
+          </div>
+          <p class="account-file-note">Saved in <code>accounts.json</code> in the project.</p>
+          <div class="account-lists">
+            <section>
+              <h3>Lichess</h3>
+              <label>Usernames, one per line <textarea id="lichess-usernames" rows="6"></textarea></label>
+              <label>Default player <select id="default-lichess"></select></label>
+            </section>
+            <section>
+              <h3>Chess.com</h3>
+              <label>Usernames, one per line <textarea id="chesscom-usernames" rows="6"></textarea></label>
+              <label>Default player <select id="default-chesscom"></select></label>
+            </section>
+          </div>
+          <div class="dialog-actions row">
+            <button id="save-accounts" type="button">Save accounts</button>
+          </div>
+          <div class="latest-game-actions">
+            <button id="latest-lichess" class="secondary" type="button">Import latest Lichess game</button>
+            <button id="latest-chesscom" class="secondary" type="button">Import latest Chess.com game</button>
+          </div>
+        </dialog>
+
         <div class="group">
           <label for="media-file">Picture or animated GIF</label>
           <div class="row">
-            <input id="media-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
+            <input id="media-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/heic,image/heif,.heic,.heif" />
             <input id="media-duration" type="number" min="20" max="30000" step="10" value="2000" title="Duration for a static picture" />
             <button id="add-media">Add media</button>
           </div>
         </div>
 
-        <div class="group">
-          <h2>Timeline</h2>
-          <ul id="timeline-list"></ul>
+          <div class="group">
+            <h2>Timeline</h2>
+            <button id="sort-timeline" class="secondary" type="button">Sort by frame number</button>
+            <ul id="timeline-list"></ul>
         </div>
       </section>
 
       <section class="panel preview">
-        <h2>Preview</h2>
-        <img id="preview-image" alt="Generated chess GIF preview" />
-        <p id="status">No preview generated yet.</p>
+        <div class="preview-heading">
+          <div>
+            <span class="eyebrow">Export preview</span>
+            <h2>Your ChessClip</h2>
+          </div>
+          <span class="preview-badge">GIF · 720 × 720</span>
+        </div>
+        <div class="preview-stage">
+          <div class="preview-placeholder">
+            <span class="preview-placeholder-icon">♞</span>
+            <span>Build your timeline, then generate a preview</span>
+          </div>
+          <img id="preview-image" alt="Generated chess GIF preview" />
+        </div>
+        <p id="status" class="preview-status">No preview generated yet.</p>
+        <div class="preview-actions">
+          <fieldset class="orientation-control">
+            <legend>Board side</legend>
+            <div class="orientation-options" role="switch" tabindex="0" aria-label="Toggle board orientation">
+              <label class="orientation-white" title="White side">
+                <input type="radio" name="export-orientation" value="white" aria-label="White side" checked />
+                <span aria-hidden="true"></span>
+              </label>
+              <label class="orientation-black" title="Black side">
+                <input type="radio" name="export-orientation" value="black" aria-label="Black side" />
+                <span aria-hidden="true"></span>
+              </label>
+            </div>
+          </fieldset>
+          <button id="preview-gif" class="preview-button">Preview GIF</button>
+          <button id="download-gif" class="download-button">Download GIF</button>
+        </div>
+        <section id="caption-live-section" class="caption-live-section" hidden>
+          <div class="section-heading">
+            <span class="eyebrow">Caption preview</span>
+            <span class="caption-preview-note">Live editor view</span>
+          </div>
+          <div id="caption-live-preview" class="caption-live-preview">
+            <span id="caption-live-text">Your caption preview will appear here</span>
+          </div>
+        </section>
       </section>
     </main>
 

@@ -166,6 +166,19 @@ impl Theme {
             .map_or(0, |(index, _)| index as u8)
     }
 
+    pub fn caption_gradient(&self, foreground: &str, background: &str) -> [u8; 16] {
+        let fg = parse_hex_color(foreground, [255, 255, 255]);
+        let bg = parse_hex_color(background, [19, 19, 19]);
+        std::array::from_fn(|index| {
+            let amount = index as f32 / 15.0;
+            self.nearest_rgb(
+                (bg[0] as f32 + (fg[0] as f32 - bg[0] as f32) * amount) as u8,
+                (bg[1] as f32 + (fg[1] as f32 - bg[1] as f32) * amount) as u8,
+                (bg[2] as f32 + (fg[2] as f32 - bg[2] as f32) * amount) as u8,
+            )
+        })
+    }
+
     pub fn glyph_background_color(&self, glyph: MoveGlyph) -> u8 {
         self.gradient_color(Gradient::from(glyph), 0.0)
     }
@@ -206,6 +219,13 @@ impl Theme {
             )),
         }
     }
+}
+
+fn parse_hex_color(value: &str, fallback: [u8; 3]) -> [u8; 3] {
+    let value = value.strip_prefix('#').unwrap_or(value);
+    if value.len() != 6 { return fallback; }
+    let Ok(color) = u32::from_str_radix(value, 16) else { return fallback; };
+    [((color >> 16) & 0xff) as u8, ((color >> 8) & 0xff) as u8, (color & 0xff) as u8]
 }
 
 pub struct Themes {
