@@ -7,7 +7,7 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; background: linear-gradient(135deg, #111827, #0f172a); min-height: 100vh; }
-.shell { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(420px, 0.9fr); gap: 1.25rem; padding: 1.5rem; }
+.shell { display: grid; grid-template-columns: minmax(360px, 1.1fr) minmax(340px, 0.9fr); gap: 1.25rem; padding: 1.5rem; align-items: start; }
 .panel { background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 18px; padding: 1.25rem; box-shadow: 0 20px 40px rgba(2, 6, 23, 0.3); }
 .controls { display: flex; flex-direction: column; gap: 0.9rem; min-width: 0; }
 h1, h2 { margin: 0 0 0.3rem; }
@@ -83,13 +83,13 @@ dialog::backdrop { background: rgba(2, 6, 23, 0.72); backdrop-filter: blur(3px);
 #dark-square-color::-webkit-color-swatch { border: 0; border-radius: 5px; }
 #dark-square-color::-moz-color-swatch { border: 0; border-radius: 5px; }
 @media (max-width: 680px) { #account-settings { padding: 1rem; } .account-lists { grid-template-columns: 1fr; } #account-settings > label:not(.toggle-row):not(.board-color-setting) { grid-template-columns: 1fr; } }
-.preview { position: sticky; top: 1.5rem; align-self: start; min-width: 0; width: 100%; padding: 1.4rem; overflow: hidden; background: linear-gradient(155deg, rgba(30, 41, 59, 0.96), rgba(8, 15, 30, 0.98)); }
+.preview { position: sticky; top: 1rem; align-self: start; min-width: 0; width: 100%; max-height: calc(100vh - 2rem); padding: 1.2rem; overflow: hidden; container-type: inline-size; background: linear-gradient(155deg, rgba(30, 41, 59, 0.96), rgba(8, 15, 30, 0.98)); }
 .preview::before { content: ""; position: absolute; width: 260px; height: 260px; top: -130px; right: -90px; border-radius: 50%; background: rgba(56, 189, 248, 0.12); filter: blur(8px); pointer-events: none; }
 .preview-heading { position: relative; display: flex; justify-content: space-between; align-items: end; gap: 1rem; margin-bottom: 1rem; }
 .eyebrow { display: block; margin-bottom: 0.25rem; color: #38bdf8; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
 .preview-heading h2 { font-size: 1.5rem; }
 .preview-badge { flex: none; border: 1px solid rgba(125, 211, 252, 0.25); border-radius: 999px; padding: 0.4rem 0.65rem; background: rgba(14, 165, 233, 0.09); color: #bae6fd; font-size: 0.72rem; font-weight: 700; }
-.preview-stage { position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 1; overflow: hidden; border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 18px; background-color: #020617; background-image: linear-gradient(45deg, rgba(148, 163, 184, 0.045) 25%, transparent 25%), linear-gradient(-45deg, rgba(148, 163, 184, 0.045) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(148, 163, 184, 0.045) 75%), linear-gradient(-45deg, transparent 75%, rgba(148, 163, 184, 0.045) 75%); background-size: 28px 28px; background-position: 0 0, 0 14px, 14px -14px, -14px 0; box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.3); }
+.preview-stage { position: relative; display: grid; place-items: center; width: 100%; max-width: max(220px, calc(85.714vh - 210px)); margin-inline: auto; aspect-ratio: 1; overflow: hidden; border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 18px; background-color: #020617; background-image: linear-gradient(45deg, rgba(148, 163, 184, 0.045) 25%, transparent 25%), linear-gradient(-45deg, rgba(148, 163, 184, 0.045) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(148, 163, 184, 0.045) 75%), linear-gradient(-45deg, transparent 75%, rgba(148, 163, 184, 0.045) 75%); background-size: 28px 28px; background-position: 0 0, 0 14px, 14px -14px, -14px 0; box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.3); }
 .preview-stage.with-player-bars { aspect-ratio: 6 / 7; }
 .preview-stage img { position: relative; z-index: 1; display: block; width: 100%; height: 100%; object-fit: contain; }
 .preview-stage img:not([src]) { display: none; }
@@ -112,6 +112,7 @@ dialog::backdrop { background: rgba(2, 6, 23, 0.72); backdrop-filter: blur(3px);
 .orientation-options:has(input:focus-visible) { outline: 2px solid #7dd3fc; outline-offset: 2px; }
 .preview-button { background: #334155; color: #f8fafc; }
 .download-button { background: linear-gradient(135deg, #38bdf8, #22d3ee); box-shadow: 0 8px 20px rgba(34, 211, 238, 0.18); }
-@media (max-width: 1050px) { .shell { grid-template-columns: 1fr; } .preview { position: static; max-width: 720px; width: 100%; margin: 0 auto; } }
+@container (max-width: 360px) { .preview-actions { grid-template-columns: 1fr 1fr; } .orientation-control { grid-column: 1 / -1; } }
+@media (max-width: 760px) { .shell { grid-template-columns: 1fr; padding: 1rem; } .preview { position: static; max-width: 720px; max-height: none; width: 100%; margin: 0 auto; } .preview-stage { max-width: 100%; } }
 @media (max-width: 560px) { .preview-actions { grid-template-columns: 1fr 1fr; } .orientation-control { grid-column: 1 / -1; } }
 @media (max-width: 390px) { .preview-actions { grid-template-columns: 1fr; } .orientation-control { grid-column: auto; } }

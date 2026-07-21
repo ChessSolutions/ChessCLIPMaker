@@ -85,6 +85,10 @@ pub struct RenderFrame {
 }
 
 impl RenderFrame {
+    fn is_media(&self) -> bool {
+        self.raster.is_some()
+    }
+
     pub fn from_board(frame: &BoardTimelineFrame) -> Self {
         let fen = frame.fen.parse::<shakmaty::fen::Fen>().unwrap_or_default();
         let board = fen.into_setup().board;
@@ -386,6 +390,29 @@ impl Iterator for Render {
                     return Some(output.into_inner().freeze());
                 }
 
+                if frame.is_media() {
+                    render_media_full_canvas(
+                        &mut self.buffer,
+                        self.theme,
+                        &frame,
+                        self.bars.is_some(),
+                        self.bar_color,
+                    );
+                    if let Some(delay) = frame.delay {
+                        let mut ctrl = block::GraphicControl::default();
+                        ctrl.set_delay_time_cs(delay);
+                        blocks.encode(ctrl).expect("enc media control");
+                    }
+                    blocks.encode(block::ImageDesc::default()
+                        .with_height(self.theme.height(self.bars.is_some()) as u16)
+                        .with_width(self.theme.width() as u16)).expect("enc media desc");
+                    let mut image_data = block::ImageData::new(self.buffer.len());
+                    image_data.data_mut().extend_from_slice(&self.buffer);
+                    blocks.encode(image_data).expect("enc media data");
+                    self.state = RenderState::Frame(frame);
+                    return Some(output.into_inner().freeze());
+                }
+
                 let mut board_view = if let Some(ref bars) = self.bars {
                     let bar_height = self.theme.bar_height();
                     let btm_bar_y = bar_height + self.theme.width();
@@ -486,6 +513,26 @@ impl Iterator for Render {
                         let mut image_data = block::ImageData::new(self.buffer.len());
                         image_data.data_mut().extend_from_slice(&self.buffer);
                         blocks.encode(image_data).expect("enc caption data");
+                        self.state = RenderState::Frame(frame);
+                        return Some(output.into_inner().freeze());
+                    }
+                    if frame.is_media() {
+                        render_media_full_canvas(
+                            &mut self.buffer,
+                            self.theme,
+                            &frame,
+                            self.bars.is_some(),
+                            self.bar_color,
+                        );
+                        let mut ctrl = block::GraphicControl::default();
+                        if let Some(delay) = frame.delay { ctrl.set_delay_time_cs(delay); }
+                        blocks.encode(ctrl).expect("enc media control");
+                        blocks.encode(block::ImageDesc::default()
+                            .with_height(self.theme.height(self.bars.is_some()) as u16)
+                            .with_width(self.theme.width() as u16)).expect("enc media desc");
+                        let mut image_data = block::ImageData::new(self.buffer.len());
+                        image_data.data_mut().extend_from_slice(&self.buffer);
+                        blocks.encode(image_data).expect("enc media data");
                         self.state = RenderState::Frame(frame);
                         return Some(output.into_inner().freeze());
                     }
@@ -681,6 +728,26 @@ fn render_glyph_badge(
         Gradient::from(glyph),
         false,
     );
+}
+
+fn render_media_full_canvas(
+    buffer: &mut [u8],
+    theme: &Theme,
+    frame: &RenderFrame,
+    has_player_bars: bool,
+    background_color: Option<u8>,
+) {
+    let width = theme.width();
+    let height = theme.height(has_player_bars);
+    buffer.fill(background_color.unwrap_or_else(|| theme.bar_color()));
+    let Some(raster) = frame.raster.as_ref() else { return };
+    let media_height = theme.height(false);
+    let top = height.saturating_sub(media_height) / 2;
+    for row in 0..media_height {
+        let source = &raster[row * width..(row + 1) * width];
+        let target_start = (top + row) * width;
+        buffer[target_start..target_start + width].copy_from_slice(source);
+    }
 }
 
 fn render_frame_contents(
