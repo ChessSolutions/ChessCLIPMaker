@@ -1,25 +1,63 @@
-# lila-gif
+# ChessClipMaker
 
-Webservice to render Gifs of chess positions and games, and stream them
-frame by frame.
+ChessClipMaker turns games from Chess.com, Lichess, or a pasted PGN into
+custom animated GIFs.
 
-![Example: DrDrunkenstein vs. Zhigalko_Sergei](/example.gif)
+I wanted a simple way to make a GIF from only the important part of a chess
+game instead of exporting every move. ChessClipMaker lets you choose a specific
+move range, add a title screen, insert pictures or animated GIFs, write formatted
+captions, and arrange everything on an editable timeline before exporting it.
 
-| size    | render time | frames | colors | width  | height |
-| ------- | ----------- | ------ | ------ | ------ | ------ |
-| 363 KiB | ~60 ms      | 93     | 255     | 720 px | 840 px |
+The project is based on the excellent
+[lila-gif](https://github.com/lichess-org/lila-gif) renderer and expands it with
+an editor, game importing, media frames, captions, player information, and a
+complete preview-and-download workflow.
 
-## Usage
+## What it can do
 
+- Paste a PGN or import a game using a Chess.com or Lichess game URL.
+- Enter a saved player handle and load any of their last 10 games.
+- Keep separate lists of Chess.com and Lichess players and select a default
+  player.
+- Automatically orient the board from the imported player's side.
+- Select only the moves you want in the finished animation.
+- Adjust every frame's duration in milliseconds.
+- Reorder frames on the timeline or change their frame numbers and sort them.
+- Generate a title frame with player names, ratings, date, and playing site.
+- Show usernames, ratings, and available PGN clock times around the board.
+- Add formatted caption frames with Google Fonts, text color, background color,
+  alignment, size, and padding controls.
+- Add a picture or another animated GIF, resize it, reposition it, and place it
+  anywhere in the timeline.
+- Change the dark-square color, coordinates, move highlights, and board
+  orientation.
+- Preview the complete animation before downloading the final GIF.
+
+## Typical workflow
+
+1. Paste a PGN, game URL, or saved player handle.
+2. When using a player handle, choose their latest game or one of the previous
+   nine games.
+3. Click **Import** to parse the game, build the timeline, and generate a
+   preview.
+4. Choose a move range and customize individual frame durations.
+5. Add or edit the title, captions, pictures, and GIF frames.
+6. Reorder the timeline and choose the board orientation and display options.
+7. Preview the result, then download the GIF.
+
+## Running from source
+
+Install Rust, clone the repository, and run:
+
+```sh
+cargo run --release
 ```
-lila-gif
 
-USAGE:
-    lila-gif [OPTIONS]
+ChessClipMaker listens on `127.0.0.1:6175` and opens the editor in your default
+browser. To use a different address:
 
-OPTIONS:
-        --bind <BIND>    Listen on this address [default: 127.0.0.1:6175]
-    -h, --help           Print help information
+```sh
+cargo run --release -- --bind 127.0.0.1:7000
 ```
 
 ## Windows executable
@@ -40,6 +78,43 @@ To create it on GitHub:
 Windows may show a SmartScreen warning because privately distributed builds are
 not code-signed. A commercial code-signing certificate is required to remove
 that warning reliably.
+
+## Roadmap
+
+- Add arrows, circles, colored squares, and other manual chess annotations.
+- Add reusable annotation frames for explaining tactics and plans.
+- Add a Stockfish evaluation bar beside the board.
+- Automatically identify blunders, mistakes, inaccuracies, and exceptional
+  moves, then offer to insert an explanation or annotation frame after them.
+- Add optional engine lines and short variations to analysis frames.
+
+### Proposed Stockfish approach
+
+Stockfish analysis should happen when a PGN is imported, not while GIF pixels
+are being encoded. A practical implementation would:
+
+1. Start Stockfish as a child process and communicate with it using the UCI
+   protocol.
+2. Send each timeline position to the engine with `position fen ...`.
+3. Analyze each position to a configurable depth or time limit using a command
+   such as `go depth 16` or `go movetime 300`.
+4. Store the returned centipawn or mate score on the corresponding chess frame.
+5. Normalize that score into a visual evaluation-bar percentage while preserving
+   mate scores as decisive positions.
+6. Compare the evaluation before and after each played move from the moving
+   player's perspective.
+7. Use configurable thresholds to classify evaluation loss. For example, a
+   large loss could be marked as a blunder, while a move matching the engine's
+   best move in a difficult position could be considered a great move.
+8. Insert suggested annotation frames into the timeline, allowing the user to
+   edit, move, or delete them before export.
+
+Engine analysis should be cached by FEN and settings so rebuilding a GIF does
+not repeatedly analyze the same positions. The first version should make all
+labels optional because terms such as “great move” require more context than a
+single centipawn threshold. Stockfish would also need to be bundled with desktop
+releases or selected by the user, and its GPL license and source-distribution
+requirements must be respected.
 
 ## HTTP API
 
@@ -101,7 +176,7 @@ for anti-aliasing on the different background colors).
 
 ![Sprite](/theme/sprites/brown-cburnett.gif)
 
-All thats left to do at runtime, is copying sprites and Gif encoding.
+All that's left to do at runtime is copy sprites and encode the GIF.
 More than 95% of the rendering time is spent in LZW compression.
 
 For animated games, frames only contain the changed squares on transparent
@@ -111,8 +186,8 @@ background. The example below is the last frame of the animation.
 
 ## License
 
-lila-gif is licensed under the GNU Affero General Public License, version 3 or
-any later version, at your option.
+ChessClipMaker is derived from lila-gif and is licensed under the GNU Affero
+General Public License, version 3 or any later version, at your option.
 
 The generated images include text in
 [Noto Sans](https://fonts.google.com/specimen/Noto+Sans) (Apache License 2.0)
