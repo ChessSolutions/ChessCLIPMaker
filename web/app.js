@@ -2,10 +2,15 @@ const state = {
   parsedGame: null,
   timeline: [],
   selectedRange: [0, 0],
+  importedUsername: null,
+  savedPlayers: [],
 };
 
 const pgnInput = document.getElementById('pgn');
 const lichessInput = document.getElementById('lichess-url');
+const gameHistoryOffsetInput = document.getElementById('game-history-offset');
+const usernameSiteInput = document.getElementById('username-site');
+const playerSuggestions = document.getElementById('saved-player-suggestions');
 const moveStartInput = document.getElementById('move-start');
 const moveEndInput = document.getElementById('move-end');
 const moveDelayInput = document.getElementById('move-delay');
@@ -21,6 +26,12 @@ const captionLivePreview = document.getElementById('caption-live-preview');
 const captionLiveText = document.getElementById('caption-live-text');
 const captionLiveSection = document.getElementById('caption-live-section');
 const captionCharacterCount = document.getElementById('caption-character-count');
+const captionEditorPanel = document.getElementById('caption-editor-panel');
+const captionEditorToggle = document.getElementById('toggle-caption-editor');
+const moveRangePanel = document.getElementById('move-range-panel');
+const moveRangeToggle = document.getElementById('toggle-move-range');
+const mediaPanel = document.getElementById('media-panel');
+const mediaPanelToggle = document.getElementById('toggle-media-panel');
 const autoTitleCardInput = document.getElementById('auto-title-card');
 const captionSettings = document.getElementById('caption-settings');
 const mediaFileInput = document.getElementById('media-file');
@@ -35,15 +46,29 @@ const lichessUsernamesInput = document.getElementById('lichess-usernames');
 const chesscomUsernamesInput = document.getElementById('chesscom-usernames');
 const defaultLichessInput = document.getElementById('default-lichess');
 const defaultChesscomInput = document.getElementById('default-chesscom');
+const showPlayerBarsInput = document.getElementById('show-player-bars');
+const showClocksInput = document.getElementById('show-clocks');
+const darkSquareColorInput = document.getElementById('dark-square-color');
+const showCoordinatesInput = document.getElementById('show-coordinates');
+const showMoveHighlightsInput = document.getElementById('show-move-highlights');
 let pendingMedia = null;
+let editingCaptionIndex = null;
 const statusNode = document.getElementById('status');
 const timelineList = document.getElementById('timeline-list');
 const previewImage = document.getElementById('preview-image');
+const previewStage = document.getElementById('preview-stage');
+const previewDimensions = document.getElementById('preview-dimensions');
 const previewButton = document.getElementById('preview-gif');
 const downloadButton = document.getElementById('download-gif');
 const orientationSwitch = document.querySelector('.orientation-options');
 let previewInProgress = false;
 let downloadInProgress = false;
+
+function updatePreviewDimensions() {
+  const withBars = showPlayerBarsInput.checked;
+  previewStage.classList.toggle('with-player-bars', withBars);
+  previewDimensions.textContent = withBars ? 'GIF · 720 × 840' : 'GIF · 720 × 720';
+}
 
 function toggleOrientation() {
   const current = getExportOrientation();
@@ -132,11 +157,21 @@ function renderTimeline() {
       state.timeline.splice(index, 1);
       renderTimeline();
     });
+    let edit = null;
+    if (frame.type === 'caption') {
+      edit = document.createElement('button');
+      edit.className = 'secondary icon-button';
+      edit.textContent = '✎';
+      edit.title = `Edit ${label.textContent}`;
+      edit.setAttribute('aria-label', `Edit ${label.textContent}`);
+      edit.addEventListener('click', () => editCaptionFrame(index));
+    }
     item.appendChild(order);
     item.appendChild(label);
     item.appendChild(duration);
     item.appendChild(up);
     item.appendChild(down);
+    if (edit) item.appendChild(edit);
     item.appendChild(remove);
     item.addEventListener('dragstart', (event) => event.dataTransfer.setData('text/plain', String(index)));
     item.addEventListener('dragover', (event) => event.preventDefault());
@@ -198,6 +233,7 @@ async function parsePgn() {
     buildTimeline();
     if (autoTitleCardInput.checked) addGameTitleCard();
     setStatus(`Parsed ${totalMoves} moves and added them to the GIF timeline.`);
+    await generateGif();
   } catch (error) {
     setStatus(error.message, true);
   }
@@ -205,6 +241,7 @@ async function parsePgn() {
 
 function selectDefaultPlayerOrientation(metadata) {
   const savedPlayers = [defaultLichessInput.value, defaultChesscomInput.value]
+    .concat(state.importedUsername || [])
     .map((name) => name.trim().toLowerCase())
     .filter(Boolean);
   const white = String(metadata.White || '').trim().toLowerCase();
@@ -221,7 +258,7 @@ function selectDefaultPlayerOrientation(metadata) {
 async function importLichess() {
   const url = lichessInput.value.trim();
   if (!url) {
-    setStatus('Enter a Lichess game URL.', true);
+    setStatus('Enter a Lichess or Chess.com game URL.', true);
     return;
   }
 
@@ -233,13 +270,39 @@ async function importLichess() {
     });
     const payload = await response.json();
     if (!response.ok) {
-      throw new Error(payload.error || 'Lichess import failed');
+      throw new Error(payload.error || 'Game import failed');
     }
     pgnInput.value = payload.pgn;
-    setStatus('Lichess game imported.');
+    lichessInput.value = '';
+    state.importedUsername = null;
+    setStatus('Game imported.');
     await parsePgn();
   } catch (error) {
     setStatus(error.message, true);
+  }
+}
+
+async function importAndBuild() {
+  const source = lichessInput.value.trim();
+  if (source && !source.includes('://') && !source.includes('/')) {
+    const normalized = source.toLowerCase();
+    const onLichess = usernameList(lichessUsernamesInput).some((name) => name.toLowerCase() === normalized);
+    const onChesscom = usernameList(chesscomUsernamesInput).some((name) => name.toLowerCase() === normalized);
+    const offset = Number(gameHistoryOffsetInput.value) || 0;
+    if (onLichess && onChesscom) {
+      await importLatestGame(usernameSiteInput.value, source, offset);
+    } else if (onLichess || onChesscom) {
+      await importLatestGame(onLichess ? 'lichess' : 'chesscom', source, offset);
+    } else if (!await importLatestGame('lichess', source, offset, true)) {
+      await importLatestGame('chesscom', source, offset);
+    }
+  } else if (source) {
+    await importLichess();
+  } else if (pgnInput.value.trim()) {
+    state.importedUsername = null;
+    await parsePgn();
+  } else {
+    setStatus('Paste a PGN or enter a Lichess/Chess.com game URL first.', true);
   }
 }
 
@@ -250,6 +313,36 @@ async function loadAccounts() {
   chesscomUsernamesInput.value = (accounts.chesscom || []).join('\n');
   refreshDefaultPlayers(defaultLichessInput, accounts.lichess || [], accounts.default_lichess);
   refreshDefaultPlayers(defaultChesscomInput, accounts.chesscom || [], accounts.default_chesscom);
+  state.savedPlayers = [...(accounts.lichess || []).map((name) => [name, 'Lichess']), ...(accounts.chesscom || []).map((name) => [name, 'Chess.com'])];
+  renderPlayerSuggestions();
+}
+
+function renderPlayerSuggestions() {
+  const query = lichessInput.value.trim().toLowerCase();
+  const matches = state.savedPlayers
+    .filter(([name]) => !query || name.toLowerCase().includes(query))
+    .slice(0, 8);
+  playerSuggestions.innerHTML = '';
+  matches.forEach(([name, site]) => {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'player-suggestion';
+    option.setAttribute('role', 'option');
+    const playerName = document.createElement('span');
+    const playerSite = document.createElement('small');
+    playerName.textContent = name;
+    playerSite.textContent = site;
+    option.append(playerName, playerSite);
+    option.addEventListener('mousedown', (event) => event.preventDefault());
+    option.addEventListener('click', () => {
+      lichessInput.value = name;
+      playerSuggestions.hidden = true;
+      lichessInput.dispatchEvent(new Event('input'));
+      lichessInput.focus();
+    });
+    playerSuggestions.appendChild(option);
+  });
+  playerSuggestions.hidden = matches.length === 0 || document.activeElement !== lichessInput;
 }
 
 function usernameList(input) {
@@ -261,7 +354,7 @@ function refreshDefaultPlayers(select, names, selected) {
   names.forEach((name) => {
     const option = document.createElement('option');
     option.value = name;
-    option.textContent = `${name}${name === selected ? ' ★ Default' : ''}`;
+    option.textContent = `${name}${name === selected ? ' ⭐ Default' : ''}`;
     option.selected = name === selected;
     select.appendChild(option);
   });
@@ -282,27 +375,41 @@ async function saveAccounts() {
   accountSettings.close();
 }
 
-async function importLatestGame(site) {
-  const username = (site === 'lichess' ? defaultLichessInput : defaultChesscomInput).value.trim();
+async function importLatestGame(site, requestedUsername = null, offset = 0, silent = false) {
+  const username = requestedUsername || (site === 'lichess' ? defaultLichessInput : defaultChesscomInput).value.trim();
   if (!username) {
     setStatus(`Enter and save your ${site === 'lichess' ? 'Lichess' : 'Chess.com'} username first.`, true);
-    return;
+    return false;
   }
   setStatus(`Getting ${username}'s latest game…`);
   try {
     const response = await fetch('/api/latest-game', {
       method: 'POST',
+      cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ site, username }),
+      body: JSON.stringify({ site, username, offset }),
     });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || 'Latest-game import failed');
     pgnInput.value = payload.pgn;
+    state.importedUsername = username;
+    if (requestedUsername) await autoSaveImportedUsername(site, requestedUsername);
     accountSettings.close();
     await parsePgn();
+    return true;
   } catch (error) {
-    setStatus(error.message, true);
+    if (!silent) setStatus(error.message, true);
+    return false;
   }
+}
+
+async function autoSaveImportedUsername(site, username) {
+  const input = site === 'lichess' ? lichessUsernamesInput : chesscomUsernamesInput;
+  if (usernameList(input).some((name) => name.toLowerCase() === username.toLowerCase())) return;
+  input.value = [...usernameList(input), username].join('\n');
+  const accounts = { lichess: usernameList(lichessUsernamesInput), chesscom: usernameList(chesscomUsernamesInput), default_lichess: defaultLichessInput.value || (site === 'lichess' ? username : null), default_chesscom: defaultChesscomInput.value || (site === 'chesscom' ? username : null) };
+  await fetch('/api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(accounts) });
+  await loadAccounts();
 }
 
 function buildTimeline() {
@@ -327,10 +434,11 @@ function buildTimeline() {
       type: 'board',
       duration_ms: moveDelay,
       fen: move.fen_after,
-      last_move: move.uci,
+      last_move: showMoveHighlightsInput.checked ? move.uci : null,
       check: move.is_check ? 'yes' : 'no',
       move_label: formatMoveLabel(move),
       sort_order: frames.length + 1,
+      clock: showClocksInput.checked ? { white: move.white_clock, black: move.black_clock } : null,
     });
   });
 
@@ -351,7 +459,7 @@ function addCaptionFrame() {
     setStatus('Enter caption text first.', true);
     return;
   }
-  state.timeline.push({
+  const captionFrame = {
     type: 'caption',
     duration_ms: Math.min(30000, Math.max(20, Number(captionDurationInput.value) || 2500)),
     text: caption,
@@ -364,11 +472,53 @@ function addCaptionFrame() {
       background_color: captionBackgroundInput.value,
     },
     sort_order: nextSortOrder(),
-  });
+  };
+  if (editingCaptionIndex === null) {
+    state.timeline.push(captionFrame);
+  } else {
+    captionFrame.sort_order = state.timeline[editingCaptionIndex].sort_order;
+    state.timeline[editingCaptionIndex] = captionFrame;
+    editingCaptionIndex = null;
+    document.getElementById('add-caption').textContent = 'Add caption frame';
+  }
   renderTimeline();
   captionInput.value = '';
   updateCaptionPreview();
+  setCaptionEditorOpen(false);
   setStatus('Caption frame added.');
+}
+
+function editCaptionFrame(index) {
+  const frame = state.timeline[index];
+  if (frame?.type !== 'caption') return;
+  editingCaptionIndex = index;
+  captionInput.value = frame.text;
+  captionFontInput.value = frame.style?.font_family || 'Noto Sans';
+  captionFontSizeInput.value = frame.style?.font_size || 56;
+  captionAlignInput.value = frame.style?.horizontal_align || 'center';
+  captionPaddingInput.value = frame.style?.padding ?? 48;
+  captionColorInput.value = frame.style?.text_color || '#ffffff';
+  captionBackgroundInput.value = frame.style?.background_color || '#131313';
+  captionDurationInput.value = frame.duration_ms || 2500;
+  document.getElementById('add-caption').textContent = 'Save caption changes';
+  setCaptionEditorOpen(true);
+  updateCaptionPreview();
+}
+
+function setCaptionEditorOpen(open) {
+  captionEditorPanel.hidden = !open;
+  captionEditorToggle.setAttribute('aria-expanded', String(open));
+  captionEditorToggle.querySelector('.disclosure-icon').textContent = open ? '−' : '＋';
+  if (open) captionInput.focus();
+}
+
+function wireDisclosure(button, panel) {
+  button.addEventListener('click', () => {
+    const open = panel.hidden;
+    panel.hidden = !open;
+    button.setAttribute('aria-expanded', String(open));
+    button.querySelector('.disclosure-icon').textContent = open ? '−' : '＋';
+  });
 }
 
 function addGameTitleCard() {
@@ -381,9 +531,16 @@ function addGameTitleCard() {
   const black = metadata.Black || 'Black';
   const whiteRating = metadata.WhiteElo && metadata.WhiteElo !== '?' ? ` (${metadata.WhiteElo})` : '';
   const blackRating = metadata.BlackElo && metadata.BlackElo !== '?' ? ` (${metadata.BlackElo})` : '';
-  const event = metadata.Event && metadata.Event !== '?' ? metadata.Event : 'Chess Game';
-  const date = metadata.Date && metadata.Date !== '?' ? metadata.Date.replaceAll('.', '-') : '';
-  const text = [event, `${white}${whiteRating}`, 'vs', `${black}${blackRating}`, date].filter(Boolean).join('\n');
+  const date = metadata.Date && metadata.Date !== '?' ? formatGameDate(metadata.Date) : '';
+  const platform = detectGamePlatform(metadata);
+  const platformLine = platform === 'lichess'
+    ? 'Played on lichess.org'
+    : platform === 'chesscom' ? 'Played on chess.com' : '';
+  const titleLines = [];
+  if (platformLine) titleLines.push(platformLine, '');
+  titleLines.push(`${white}${whiteRating}`, 'vs', `${black}${blackRating}`);
+  if (date) titleLines.push('', date);
+  const text = titleLines.join('\n');
   state.timeline.forEach((frame) => { frame.sort_order = (frame.sort_order || 0) + 1; });
   state.timeline.unshift({
     type: 'caption',
@@ -399,11 +556,34 @@ function addGameTitleCard() {
       text_color: captionColorInput.value,
       background_color: captionBackgroundInput.value,
       line_height: 1.2,
+      platform,
     },
     sort_order: 1,
   });
   renderTimeline();
   setStatus('Automatic game title card added as frame 1.');
+}
+
+function formatGameDate(value) {
+  const match = String(value).match(/^(\d{4})[.\-/](\d{2})[.\-/](\d{2})$/);
+  if (!match || match[2] === '??' || match[3] === '??') return value;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(date);
+}
+
+function detectGamePlatform(metadata) {
+  const source = `${metadata.Site || ''} ${metadata.Event || ''}`.toLowerCase();
+  if (source.includes('lichess')) return 'lichess';
+  if (source.includes('chess.com') || source.includes('chesscom')) return 'chesscom';
+  return null;
+}
+
+function playerBarName(color) {
+  const metadata = state.parsedGame?.metadata || {};
+  const name = metadata[color] || color;
+  const rating = metadata[`${color}Elo`];
+  return rating && rating !== '?' ? `${name} (${rating})` : name;
 }
 
 function updateCaptionPreview() {
@@ -500,12 +680,13 @@ async function generateGif() {
   }
 
   const requestBody = {
-    white: 'White',
-    black: 'Black',
+    white: playerBarName('White'),
+    black: playerBarName('Black'),
     orientation: getExportOrientation(),
-    coordinates: 'yes',
-    include_player_bars: true,
+    coordinates: showCoordinatesInput.checked ? 'yes' : 'no',
+    include_player_bars: showPlayerBarsInput.checked,
     preview: true,
+    dark_square_color: darkSquareColorInput.value,
     timeline: state.timeline,
   };
 
@@ -546,12 +727,13 @@ async function downloadGif() {
   }
 
   const requestBody = {
-    white: 'White',
-    black: 'Black',
+    white: playerBarName('White'),
+    black: playerBarName('Black'),
     orientation: getExportOrientation(),
-    coordinates: 'yes',
-    include_player_bars: true,
+    coordinates: showCoordinatesInput.checked ? 'yes' : 'no',
+    include_player_bars: showPlayerBarsInput.checked,
     preview: false,
+    dark_square_color: darkSquareColorInput.value,
     timeline: state.timeline,
   };
 
@@ -593,10 +775,31 @@ function getExportOrientation() {
   return document.querySelector('input[name="export-orientation"]:checked')?.value || 'white';
 }
 
-document.getElementById('parse-pgn').addEventListener('click', parsePgn);
-document.getElementById('import-lichess').addEventListener('click', importLichess);
-document.getElementById('build-timeline').addEventListener('click', buildTimeline);
+document.getElementById('import-game').addEventListener('click', importAndBuild);
+lichessInput.addEventListener('input', () => {
+  const source = lichessInput.value.trim();
+  const isUsername = Boolean(source) && !source.includes('://') && !source.includes('/');
+  gameHistoryOffsetInput.hidden = !isUsername;
+  usernameSiteInput.hidden = true;
+  if (isUsername) {
+    const normalized = source.toLowerCase();
+    const onLichess = usernameList(lichessUsernamesInput).some((name) => name.toLowerCase() === normalized);
+    const onChesscom = usernameList(chesscomUsernamesInput).some((name) => name.toLowerCase() === normalized);
+    usernameSiteInput.hidden = !(onLichess && onChesscom);
+    if (onChesscom && !onLichess) usernameSiteInput.value = 'chesscom';
+    if (onLichess && !onChesscom) usernameSiteInput.value = 'lichess';
+  }
+  renderPlayerSuggestions();
+});
+lichessInput.addEventListener('focus', renderPlayerSuggestions);
+lichessInput.addEventListener('blur', () => { playerSuggestions.hidden = true; });
+lichessInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') playerSuggestions.hidden = true;
+});
 document.getElementById('add-caption').addEventListener('click', addCaptionFrame);
+captionEditorToggle.addEventListener('click', () => setCaptionEditorOpen(captionEditorPanel.hidden));
+wireDisclosure(moveRangeToggle, moveRangePanel);
+wireDisclosure(mediaPanelToggle, mediaPanel);
 document.getElementById('add-title-card').addEventListener('click', addGameTitleCard);
 document.getElementById('add-media').addEventListener('click', addMediaFrame);
 document.getElementById('sort-timeline').addEventListener('click', sortTimeline);
@@ -608,10 +811,10 @@ document.getElementById('account-settings-close').addEventListener('click', () =
 document.getElementById('save-accounts').addEventListener('click', saveAccounts);
 lichessUsernamesInput.addEventListener('input', () => refreshDefaultPlayers(defaultLichessInput, usernameList(lichessUsernamesInput), defaultLichessInput.value));
 chesscomUsernamesInput.addEventListener('input', () => refreshDefaultPlayers(defaultChesscomInput, usernameList(chesscomUsernamesInput), defaultChesscomInput.value));
-document.getElementById('latest-lichess').addEventListener('click', () => importLatestGame('lichess'));
-document.getElementById('latest-chesscom').addEventListener('click', () => importLatestGame('chesscom'));
 [mediaScaleInput, mediaOffsetXInput, mediaOffsetYInput].forEach((input) => input.addEventListener('input', updateMediaPreview));
 [captionInput, captionFontInput, captionFontSizeInput, captionAlignInput, captionPaddingInput, captionColorInput, captionBackgroundInput].forEach((input) => input.addEventListener('input', updateCaptionPreview));
+showPlayerBarsInput.addEventListener('change', updatePreviewDimensions);
+showMoveHighlightsInput.addEventListener('change', buildTimeline);
 document.getElementById('caption-settings-open').addEventListener('click', () => captionSettings.showModal());
 document.getElementById('caption-settings-close').addEventListener('click', () => captionSettings.close());
 document.getElementById('caption-settings-done').addEventListener('click', () => captionSettings.close());
@@ -637,3 +840,4 @@ fetch('/google-fonts.json').then((response) => response.json()).then((fonts) => 
   updateCaptionPreview();
 }).catch(() => { captionFontInput.innerHTML = '<option>Noto Sans</option>'; });
 updateCaptionPreview();
+updatePreviewDimensions();

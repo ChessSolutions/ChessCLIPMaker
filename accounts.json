@@ -4,8 +4,10 @@
     "imovewood"
   ],
   "chesscom": [
+    "Hikaru",
+    "MagnusCarlsen",
     "gmoves"
   ],
-  "default_lichess": "imovewood",
+  "default_lichess": "MassterofMayhem",
   "default_chesscom": "gmoves"
 }

@@ -203,6 +203,8 @@ pub struct Render {
     frames: vec::IntoIter<RenderFrame>,
     kork: bool,
     clock_widths: [usize; 2],
+    bar_color: Option<u8>,
+    dark_square_color: Option<u8>,
 }
 
 impl Render {
@@ -236,6 +238,8 @@ impl Render {
             .into_iter(),
             kork: false,
             clock_widths: [0; 2],
+            bar_color: None,
+            dark_square_color: None,
         }
     }
 
@@ -278,6 +282,8 @@ impl Render {
                 .into_iter(),
             kork: true,
             clock_widths: [0; 2],
+            bar_color: None,
+            dark_square_color: None,
         }
     }
 
@@ -286,8 +292,17 @@ impl Render {
         params: crate::compose::ComposeRequest,
         frames: Vec<RenderFrame>,
     ) -> Render {
-        let bars = None;
+        let has_clocks = frames.iter().any(|frame| frame.white_clock.is_some() || frame.black_clock.is_some());
+        let bars = if params.include_player_bars {
+            PlayerBars::from(
+                params.white.as_deref().and_then(|name| PlayerName::from(name).ok()),
+                params.black.as_deref().and_then(|name| PlayerName::from(name).ok()),
+                has_clocks,
+            )
+        } else { None };
         let theme = themes.get(params.theme, params.piece);
+        let bar_color = params.background_color.as_deref().map(|color| theme.nearest_color(color));
+        let dark_square_color = params.dark_square_color.as_deref().map(|color| theme.nearest_color(color));
         Render {
             theme,
             font: themes.font(),
@@ -300,6 +315,8 @@ impl Render {
             frames: frames.into_iter(),
             kork: false,
             clock_widths: [0; 2],
+            bar_color,
+            dark_square_color,
         }
     }
 }
@@ -351,6 +368,24 @@ impl Iterator for Render {
                 )
                 .expect("shape");
 
+                if let Some(caption) = &frame.caption {
+                    view.fill(self.theme.nearest_color(&caption.style.background_color));
+                    render_caption(&mut view, self.theme, self.font, caption);
+                    if let Some(delay) = frame.delay {
+                        let mut ctrl = block::GraphicControl::default();
+                        ctrl.set_delay_time_cs(delay);
+                        blocks.encode(ctrl).expect("enc caption control");
+                    }
+                    blocks.encode(block::ImageDesc::default()
+                        .with_height(self.theme.height(self.bars.is_some()) as u16)
+                        .with_width(self.theme.width() as u16)).expect("enc caption desc");
+                    let mut image_data = block::ImageData::new(self.buffer.len());
+                    image_data.data_mut().extend_from_slice(&self.buffer);
+                    blocks.encode(image_data).expect("enc caption data");
+                    self.state = RenderState::Frame(frame);
+                    return Some(output.into_inner().freeze());
+                }
+
                 let mut board_view = if let Some(ref bars) = self.bars {
                     let bar_height = self.theme.bar_height();
                     let btm_bar_y = bar_height + self.theme.width();
@@ -364,6 +399,7 @@ impl Iterator for Render {
                             self.theme,
                             self.font,
                             name,
+                            self.bar_color,
                         );
                     }
 
@@ -413,6 +449,7 @@ impl Iterator for Render {
                     self.coordinates,
                     &frame,
                     self.font,
+                    self.dark_square_color,
                 );
 
                 blocks
@@ -429,51 +466,73 @@ impl Iterator for Render {
 
                 self.state = RenderState::Frame(frame);
             }
-            RenderState::Frame(ref prev) => {
+            RenderState::Frame(_) => {
                 let mut blocks = Encoder::new(&mut output).into_block_enc();
 
                 if let Some(frame) = self.frames.next() {
+                    if let Some(caption) = &frame.caption {
+                        let mut full_view = ArrayViewMut2::from_shape(
+                            (self.theme.height(self.bars.is_some()), self.theme.width()),
+                            &mut self.buffer,
+                        ).expect("caption shape");
+                        full_view.fill(self.theme.nearest_color(&caption.style.background_color));
+                        render_caption(&mut full_view, self.theme, self.font, caption);
+                        let mut ctrl = block::GraphicControl::default();
+                        if let Some(delay) = frame.delay { ctrl.set_delay_time_cs(delay); }
+                        blocks.encode(ctrl).expect("enc caption control");
+                        blocks.encode(block::ImageDesc::default()
+                            .with_height(self.theme.height(self.bars.is_some()) as u16)
+                            .with_width(self.theme.width() as u16)).expect("enc caption desc");
+                        let mut image_data = block::ImageData::new(self.buffer.len());
+                        image_data.data_mut().extend_from_slice(&self.buffer);
+                        blocks.encode(image_data).expect("enc caption data");
+                        self.state = RenderState::Frame(frame);
+                        return Some(output.into_inner().freeze());
+                    }
                     if self.bars.is_some() {
                         let bar_height = self.theme.bar_height();
                         let btm_bar_y = bar_height + self.theme.width();
-                        let prev_clocks = clock_positions(prev, self.orientation, btm_bar_y);
-                        let curr_clocks = clock_positions(&frame, self.orientation, btm_bar_y);
-
-                        for (idx, ((clock, bar_top), (prev_clock, _))) in
-                            curr_clocks.into_iter().zip(prev_clocks).enumerate()
-                        {
-                            let Some(centis) = clock.filter(|&c| Some(c) != prev_clock) else {
-                                continue;
-                            };
-                            let mut ctrl = block::GraphicControl::default();
-                            ctrl.set_disposal_method(block::DisposalMethod::Keep);
-                            blocks.encode(ctrl).expect("enc clock ctrl");
-
-                            let (region_width, clock_left) = render_clock_region(
-                                &mut self.buffer,
-                                self.theme,
-                                self.font,
-                                centis,
-                                self.clock_widths[idx],
+                        if let Some(ref bars) = self.bars {
+                            let curr_clocks = clock_positions(&frame, self.orientation, btm_bar_y);
+                            let bar_names = self.orientation.fold(
+                                [(&bars.black as &str, 0), (&bars.white as &str, btm_bar_y)],
+                                [(&bars.white as &str, 0), (&bars.black as &str, btm_bar_y)],
                             );
-                            self.clock_widths[idx] = region_width;
-                            let region_size = bar_height * region_width;
-
-                            blocks
-                                .encode(
-                                    block::ImageDesc::default()
-                                        .with_left(clock_left as u16)
-                                        .with_top(bar_top as u16)
-                                        .with_height(bar_height as u16)
-                                        .with_width(region_width as u16),
-                                )
-                                .expect("enc clock desc");
-
-                            let mut image_data = block::ImageData::new(region_size);
-                            image_data
-                                .data_mut()
-                                .extend_from_slice(&self.buffer[..region_size]);
-                            blocks.encode(image_data).expect("enc clock data");
+                            for (name, bar_top) in bar_names {
+                                let bar_size = bar_height * self.theme.width();
+                                {
+                                    let mut bar_view = ArrayViewMut2::from_shape(
+                                        (bar_height, self.theme.width()),
+                                        &mut self.buffer[..bar_size],
+                                    ).expect("bar shape");
+                                    render_bar(bar_view.view_mut(), self.theme, self.font, name, self.bar_color);
+                                    if let Some((idx, (Some(centis), _))) = curr_clocks
+                                        .iter().enumerate().find(|(_, (_, top))| *top == bar_top)
+                                    {
+                                        let mut clock_buffer = vec![0u8; bar_size];
+                                        let (region_width, clock_left) = render_clock_region(
+                                            &mut clock_buffer,
+                                            self.theme,
+                                            self.font,
+                                            *centis,
+                                            self.clock_widths[idx],
+                                        );
+                                        self.clock_widths[idx] = region_width;
+                                        let clock_view = ArrayView2::from_shape(
+                                            (bar_height, region_width),
+                                            &clock_buffer[..bar_height * region_width],
+                                        ).expect("clock shape");
+                                        bar_view.slice_mut(s!(.., clock_left..clock_left + region_width)).assign(&clock_view);
+                                    }
+                                }
+                                blocks.encode(block::ImageDesc::default()
+                                    .with_top(bar_top as u16)
+                                    .with_height(bar_height as u16)
+                                    .with_width(self.theme.width() as u16)).expect("enc player bar desc");
+                                let mut bar_data = block::ImageData::new(bar_size);
+                                bar_data.data_mut().extend_from_slice(&self.buffer[..bar_size]);
+                                blocks.encode(bar_data).expect("enc player bar data");
+                            }
                         }
                     }
 
@@ -485,13 +544,15 @@ impl Iterator for Render {
                     }
                     blocks.encode(ctrl).expect("enc graphic control");
 
+                    let board_size = self.theme.width() * self.theme.width();
                     let ((left, y), (w, h)) = render_frame_contents(
-                        &mut self.buffer,
+                        &mut self.buffer[..board_size],
                         self.theme,
                         self.orientation,
                         self.coordinates,
                         &frame,
                         self.font,
+                        self.dark_square_color,
                     );
 
                     let top = y + if self.bars.is_some() {
@@ -629,6 +690,7 @@ fn render_frame_contents(
     coordinates: Coordinates,
     frame: &RenderFrame,
     font: &Font,
+    dark_square_color: Option<u8>,
 ) -> ((usize, usize), (usize, usize)) {
     if let Some(caption) = &frame.caption {
         let width = theme.width();
@@ -716,6 +778,14 @@ fn render_frame_contents(
         {
             render_glyph_badge(&mut square_buffer, theme, font, glyph);
         }
+
+        if let Some(custom_dark) = dark_square_color
+            && key.dark_square
+            && !key.highlight
+        {
+            let original_dark = theme.gradient_color(Gradient::LightDark, 0.0);
+            square_buffer.mapv_inplace(|pixel| if pixel == original_dark { custom_dark } else { pixel });
+        }
     }
 
     (
@@ -741,8 +811,20 @@ fn render_caption(
     let mut text_view = view.slice_mut(s!(.., ..));
     text_view.fill(theme.nearest_color(&caption.style.background_color));
     let caption_gradient = theme.caption_gradient(&caption.style.text_color, &caption.style.background_color);
-    let lines = text.lines().take(6).collect::<Vec<_>>();
-    let mut y = caption.style.padding as usize;
+    let platform_gradient = caption.style.platform.as_deref().map(|platform| {
+        let color = if platform == "chesscom" { "#81b64c" } else { "#d59120" };
+        theme.caption_gradient(color, &caption.style.background_color)
+    });
+    let lines = text.lines().take(8).collect::<Vec<_>>();
+    let font_height = caption.style.font_size as usize;
+    let line_step = font_height + 8;
+    let text_height = lines.len().saturating_mul(line_step).saturating_sub(8);
+    let padding = caption.style.padding as usize;
+    let mut y = match caption.style.vertical_align {
+        crate::compose::VerticalAlign::Top => padding,
+        crate::compose::VerticalAlign::Middle => height.saturating_sub(text_height) / 2,
+        crate::compose::VerticalAlign::Bottom => height.saturating_sub(text_height + padding),
+    };
     for line in lines {
         let line_glyphs: Vec<_> = font.layout(line, scale, rusttype::point(0.0, v_metrics.ascent)).collect();
         let line_width = line_glyphs.iter().filter_map(|g| g.pixel_bounding_box()).map(|bb| bb.max.x).max().unwrap_or(0) as usize;
@@ -751,10 +833,15 @@ fn render_caption(
             crate::compose::HorizontalAlign::Right => width.saturating_sub(line_width),
             crate::compose::HorizontalAlign::Left => caption.style.padding as usize,
         };
-        let glyph_offset = y;
-        let mut line_view = text_view.slice_mut(s!(glyph_offset..(glyph_offset + caption.style.font_size as usize), x..));
-        render_caption_text(&mut line_view, line_glyphs, &caption_gradient);
-        y += caption.style.font_size as usize + 8;
+        let glyph_offset = y.min(height.saturating_sub(font_height));
+        let mut line_view = text_view.slice_mut(s!(glyph_offset..(glyph_offset + font_height), x..));
+        let colors = if line.starts_with("Played on ") {
+            platform_gradient.as_ref().unwrap_or(&caption_gradient)
+        } else {
+            &caption_gradient
+        };
+        render_caption_text(&mut line_view, line_glyphs, colors);
+        y += line_step;
     }
     let _ = (width, height);
 }
@@ -827,8 +914,8 @@ fn render_rank(
     );
 }
 
-fn render_bar(mut view: ArrayViewMut2<u8>, theme: &Theme, font: &Font, player_name: &str) {
-    view.fill(theme.bar_color());
+fn render_bar(mut view: ArrayViewMut2<u8>, theme: &Theme, font: &Font, player_name: &str, background: Option<u8>) {
+    view.fill(background.unwrap_or_else(|| theme.bar_color()));
 
     let height = 40.0;
     let scale = Scale {

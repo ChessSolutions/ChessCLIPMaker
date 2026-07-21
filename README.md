@@ -22,6 +22,25 @@ OPTIONS:
     -h, --help           Print help information
 ```
 
+## Windows executable
+
+The Windows build is a single, portable `ChessClipMaker.exe`. The editor web
+interface is embedded in the executable. Double-clicking it starts the local
+server and opens the editor in the default browser. Saved accounts are written
+to `accounts.json` beside the executable.
+
+To create it on GitHub:
+
+1. Open the repository's **Actions** tab.
+2. Select **Build Windows EXE**.
+3. Choose **Run workflow**.
+4. Download the **ChessClipMaker-Windows** artifact after the job finishes.
+5. Unzip it and share `ChessClipMaker.exe`.
+
+Windows may show a SmartScreen warning because privately distributed builds are
+not code-signed. A commercial code-signing certificate is required to remove
+that warning reliably.
+
 ## HTTP API
 
 ### `GET /image.gif`

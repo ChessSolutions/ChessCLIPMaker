@@ -1,0 +1,32 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-exe:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Build release executable
+        run: cargo build --release --locked
+
+      - name: Give executable its public name
+        shell: pwsh
+        run: Copy-Item target/release/lila-gif.exe ChessClipMaker.exe
+
+      - name: Upload ChessClipMaker.exe
+        uses: actions/upload-artifact@v7
+        with:
+          name: ChessClipMaker-Windows
+          path: ChessClipMaker.exe
+          if-no-files-found: error
+

@@ -63,6 +63,8 @@ pub struct CaptionStyle {
     pub secondary_text: Option<String>,
     #[serde(default)]
     pub move_reference: bool,
+    #[serde(default)]
+    pub platform: Option<String>,
 }
 
 impl Default for CaptionStyle {
@@ -82,6 +84,7 @@ impl Default for CaptionStyle {
             rounded: false,
             secondary_text: None,
             move_reference: false,
+            platform: None,
         }
     }
 }
@@ -153,6 +156,10 @@ pub struct ComposeRequest {
     pub width: Option<u16>,
     #[serde(default)]
     pub height: Option<u16>,
+    #[serde(default)]
+    pub background_color: Option<String>,
+    #[serde(default)]
+    pub dark_square_color: Option<String>,
 }
 
 impl ComposeRequest {
@@ -205,6 +212,8 @@ pub struct ParsedMove {
     pub fen_after: String,
     pub is_check: bool,
     pub is_mate: bool,
+    pub white_clock: Option<u32>,
+    pub black_clock: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -228,6 +237,8 @@ pub struct LichessImportResponse {
 pub struct LatestGameRequest {
     pub site: String,
     pub username: String,
+    #[serde(default)]
+    pub offset: usize,
 }
 
 pub fn parse_pgn(pgn: &str) -> Result<ParsedGame, String> {
@@ -249,6 +260,8 @@ pub fn parse_pgn(pgn: &str) -> Result<ParsedGame, String> {
     let mut chess = Chess::default();
     let mut moves = Vec::new();
     let mut ply = 0usize;
+    let clock_values = extract_clock_values(pgn);
+    let mut clocks = [None, None];
     for raw_token in tokenize_pgn(&move_text) {
         let token = strip_move_number(&raw_token);
         if token.is_empty() {
@@ -284,6 +297,9 @@ pub fn parse_pgn(pgn: &str) -> Result<ParsedGame, String> {
         };
         let is_check = chess.is_check();
         let is_mate = chess.is_checkmate();
+        if let Some(clock) = clock_values.get(ply - 1).copied() {
+            clocks[if side == "white" { 0 } else { 1 }] = Some(clock);
+        }
         moves.push(ParsedMove {
             ply,
             move_number,
@@ -294,6 +310,8 @@ pub fn parse_pgn(pgn: &str) -> Result<ParsedGame, String> {
             fen_after: fen_after.clone(),
             is_check,
             is_mate,
+            white_clock: clocks[0],
+            black_clock: clocks[1],
         });
         let _ = fen_after;
     }
@@ -304,6 +322,28 @@ pub fn parse_pgn(pgn: &str) -> Result<ParsedGame, String> {
         initial_fen,
         moves,
     })
+}
+
+fn extract_clock_values(pgn: &str) -> Vec<u32> {
+    let mut values = Vec::new();
+    let mut remaining = pgn;
+    while let Some(start) = remaining.find("[%clk ") {
+        remaining = &remaining[start + 6..];
+        let Some(end) = remaining.find(']') else { break; };
+        if let Some(clock) = parse_clock(&remaining[..end]) { values.push(clock); }
+        remaining = &remaining[end + 1..];
+    }
+    values
+}
+
+fn parse_clock(value: &str) -> Option<u32> {
+    let parts: Vec<_> = value.trim().split(':').collect();
+    let (hours, minutes, seconds) = match parts.as_slice() {
+        [hours, minutes, seconds] => (hours.parse::<u32>().ok()?, minutes.parse::<u32>().ok()?, seconds.parse::<f64>().ok()?),
+        [minutes, seconds] => (0, minutes.parse::<u32>().ok()?, seconds.parse::<f64>().ok()?),
+        _ => return None,
+    };
+    Some(((hours * 3600 + minutes * 60) as f64 * 100.0 + seconds * 100.0).round() as u32)
 }
 
 fn strip_move_number(token: &str) -> &str {
@@ -428,6 +468,8 @@ mod tests {
             preview: false,
             width: None,
             height: None,
+            background_color: None,
+            dark_square_color: None,
         };
         assert!(req.validate().is_err());
     }

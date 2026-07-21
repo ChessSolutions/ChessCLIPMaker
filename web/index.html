@@ -20,48 +20,66 @@
           <textarea id="pgn" class="pgn-input" rows="5" placeholder="Paste a PGN here"></textarea>
         </div>
 
-        <div class="row">
-          <input id="lichess-url" type="text" placeholder="https://lichess.org/abc123" />
-          <button id="import-lichess">Import Lichess</button>
-        </div>
-
-        <div class="row actions">
-          <button id="parse-pgn">Parse PGN</button>
-          <button id="build-timeline">Build Timeline</button>
-        </div>
-
-        <div class="group">
-          <label for="move-start">Move range</label>
-          <div class="row range-row">
-            <input id="move-start" type="number" min="0" value="0" />
-            <span>to</span>
-            <input id="move-end" type="number" min="0" value="0" />
+        <div class="row import-row">
+          <div class="username-input-wrap">
+            <input id="lichess-url" type="text" autocomplete="off" placeholder="Game URL or Lichess/Chess.com username" />
+            <div id="saved-player-suggestions" class="player-suggestions" role="listbox" hidden></div>
           </div>
+          <select id="username-site" hidden><option value="lichess">Lichess</option><option value="chesscom">Chess.com</option></select>
+          <select id="game-history-offset" class="game-history-offset" hidden>
+            <option value="0">Last game</option>
+            <option value="1">2 games ago</option>
+            <option value="2">3 games ago</option>
+            <option value="3">4 games ago</option>
+            <option value="4">5 games ago</option>
+            <option value="5">6 games ago</option>
+            <option value="6">7 games ago</option>
+            <option value="7">8 games ago</option>
+            <option value="8">9 games ago</option>
+            <option value="9">10 games ago</option>
+          </select>
+          <button id="import-game">Import</button>
         </div>
 
         <div class="group">
-          <label for="move-delay">Frame duration (ms)</label>
-          <input id="move-delay" type="number" min="20" step="10" value="1000" />
-        </div>
-
-        <div class="group">
-          <div class="section-heading">
-            <label for="caption-text">Caption frame</label>
-            <button id="caption-settings-open" class="settings-button secondary" type="button" aria-label="Caption settings" title="Caption settings">⚙</button>
-          </div>
-          <div class="caption-editor-shell">
-            <div class="caption-editor-toolbar">
-              <span>Text editor</span>
-              <span id="caption-character-count">0 characters</span>
+          <button id="toggle-move-range" class="secondary disclosure-button" type="button" aria-expanded="false">
+            <span>Move Range</span><span class="disclosure-icon" aria-hidden="true">＋</span>
+          </button>
+          <div id="move-range-panel" class="caption-editor-panel" hidden>
+            <label for="move-start">Moves to include</label>
+            <div class="row range-row">
+              <input id="move-start" type="number" min="0" value="0" />
+              <span>to</span>
+              <input id="move-end" type="number" min="0" value="0" />
             </div>
-            <textarea id="caption-text" rows="5" maxlength="500" placeholder="Write the caption exactly as it should appear. Use Enter for a new line."></textarea>
+            <label for="move-delay">Frame duration (ms)</label>
+            <input id="move-delay" type="number" min="20" step="10" value="1000" />
           </div>
-          <button id="add-caption">Add caption frame</button>
-          <label class="toggle-row">
-            <input id="auto-title-card" type="checkbox" checked />
-            Automatically add player, rating, and date caption
-          </label>
-          <button id="add-title-card" class="secondary" type="button">Add game info caption now</button>
+        </div>
+
+        <div class="group">
+          <button id="toggle-caption-editor" class="secondary disclosure-button" type="button" aria-expanded="false">
+            <span>Add Caption</span><span class="disclosure-icon" aria-hidden="true">＋</span>
+          </button>
+          <div id="caption-editor-panel" class="caption-editor-panel" hidden>
+            <div class="section-heading">
+              <label for="caption-text">Caption frame</label>
+              <button id="caption-settings-open" class="settings-button secondary" type="button" aria-label="Caption settings" title="Caption settings">⚙</button>
+            </div>
+            <div class="caption-editor-shell">
+              <div class="caption-editor-toolbar">
+                <span>Text editor</span>
+                <span id="caption-character-count">0 characters</span>
+              </div>
+              <textarea id="caption-text" rows="5" maxlength="500" placeholder="Write the caption exactly as it should appear. Use Enter for a new line."></textarea>
+            </div>
+            <button id="add-caption">Add caption frame</button>
+            <label class="toggle-row">
+              <input id="auto-title-card" type="checkbox" checked />
+              Automatically add player, rating, and date caption
+            </label>
+            <button id="add-title-card" class="secondary" type="button">Add game info caption now</button>
+          </div>
         </div>
 
         <dialog id="caption-settings">
@@ -131,18 +149,28 @@
           <div class="dialog-actions row">
             <button id="save-accounts" type="button">Save accounts</button>
           </div>
-          <div class="latest-game-actions">
-            <button id="latest-lichess" class="secondary" type="button">Import latest Lichess game</button>
-            <button id="latest-chesscom" class="secondary" type="button">Import latest Chess.com game</button>
-          </div>
+          <h3>Chess display</h3>
+          <label class="board-color-setting">
+            <span>Dark board squares</span>
+            <input id="dark-square-color" type="color" value="#b58863" aria-label="Choose dark board square color" />
+          </label>
+          <label class="toggle-row"><input id="show-coordinates" type="checkbox" checked /> Show board coordinates</label>
+          <label class="toggle-row"><input id="show-move-highlights" type="checkbox" checked /> Show move highlights and annotations</label>
+          <label class="toggle-row"><input id="show-player-bars" type="checkbox" checked /> Show usernames above and below board</label>
+          <label class="toggle-row"><input id="show-clocks" type="checkbox" checked /> Show available PGN clock times</label>
         </dialog>
 
         <div class="group">
-          <label for="media-file">Picture or animated GIF</label>
-          <div class="row">
-            <input id="media-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/heic,image/heif,.heic,.heif" />
-            <input id="media-duration" type="number" min="20" max="30000" step="10" value="2000" title="Duration for a static picture" />
-            <button id="add-media">Add media</button>
+          <button id="toggle-media-panel" class="secondary disclosure-button" type="button" aria-expanded="false">
+            <span>Add Picture or GIF</span><span class="disclosure-icon" aria-hidden="true">＋</span>
+          </button>
+          <div id="media-panel" class="caption-editor-panel" hidden>
+            <label for="media-file">Picture or animated GIF</label>
+            <div class="row">
+              <input id="media-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/heic,image/heif,.heic,.heif" />
+              <input id="media-duration" type="number" min="20" max="30000" step="10" value="2000" title="Duration for a static picture" />
+              <button id="add-media">Add media</button>
+            </div>
           </div>
         </div>
 
@@ -159,9 +187,9 @@
             <span class="eyebrow">Export preview</span>
             <h2>Your ChessClip</h2>
           </div>
-          <span class="preview-badge">GIF · 720 × 720</span>
+          <span id="preview-dimensions" class="preview-badge">GIF · 720 × 840</span>
         </div>
-        <div class="preview-stage">
+        <div id="preview-stage" class="preview-stage with-player-bars">
           <div class="preview-placeholder">
             <span class="preview-placeholder-icon">♞</span>
             <span>Build your timeline, then generate a preview</span>
